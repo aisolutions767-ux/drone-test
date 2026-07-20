@@ -313,6 +313,7 @@ def serve_viewer():
 
 if __name__ == "__main__":
     import uvicorn
-    print("Starting Drone Mission API on http://localhost:8765")
-    print("n8n HTTP Request nodes should point to http://localhost:8765")
-    uvicorn.run(app, host="0.0.0.0", port=8765, reload=False)
+    import os
+    port = int(os.getenv("PORT", 8765))
+    print(f"Starting Drone Mission API on http://0.0.0.0:{port}")
+    uvicorn.run(app, host="0.0.0.0", port=port, reload=False)
