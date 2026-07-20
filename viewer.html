@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Drone Cesium Viewer</title>
+    <!-- Cesium JS and CSS from CDN -->
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Cesium.js"></script>
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <style>
+        html, body, #cesiumContainer {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #000;
+        }
+
+        /* Sleek overlay for HUD */
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(10, 15, 28, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 20px;
+            color: #fff;
+            z-index: 1000;
+            width: 280px;
+            pointer-events: none;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            transition: all 0.3s ease;
+        }
+
+        h2 {
+            margin: 0 0 15px 0;
+            font-size: 16px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: #4facfe;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .hud-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+
+        .hud-label {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .hud-value {
+            font-weight: bold;
+            color: #fff;
+            font-family: monospace;
+        }
+
+        #loading-indicator {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(10, 15, 28, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 30px;
+            padding: 10px 20px;
+            color: #fff;
+            font-size: 12px;
+            font-weight: bold;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        }
+
+        .spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top: 2px solid #4facfe;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Hide Cesium default credits for clean capture */
+        .cesium-viewer-bottom {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <h2>Virtual Drone HUD <div class="spinner" id="hud-spinner" style="display:none;"></div></h2>
+        <div class="hud-row">
+            <span class="hud-label">Target Location:</span>
+            <span class="hud-value" id="hud-loc">-</span>
+        </div>
+        <div class="hud-row">
+            <span class="hud-label">Latitude:</span>
+            <span class="hud-value" id="hud-lat">0.000000</span>
+        </div>
+        <div class="hud-row">
+            <span class="hud-label">Longitude:</span>
+            <span class="hud-value" id="hud-lon">0.000000</span>
+        </div>
+        <div class="hud-row">
+            <span class="hud-label">Altitude (Range):</span>
+            <span class="hud-value" id="hud-alt">0 m</span>
+        </div>
+        <div class="hud-row">
+            <span class="hud-label">Heading:</span>
+            <span class="hud-value" id="hud-heading">0°</span>
+        </div>
+        <div class="hud-row">
+            <span class="hud-label">Pitch:</span>
+            <span class="hud-value" id="hud-pitch">0°</span>
+        </div>
+        <div class="hud-row">
+            <span class="hud-label">Status:</span>
+            <span class="hud-value" id="hud-status" style="color: #ff9f43;">INITIALIZING</span>
+        </div>
+    </div>
+
+    <div id="loading-indicator">
+        <div class="spinner"></div>
+        <span id="loading-text">Loading Tiles...</span>
+    </div>
+
+    <div id="cesiumContainer"></div>
+
+    <script>
+        // Global viewer reference
+        let viewer = null;
+        let active3dTileset = null;
+        let terrainProvider = null;
+
+        // Parse query params for initialization settings
+        const urlParams = new URLSearchParams(window.location.search);
+        
+        // Default fallbacks if opened directly in browser without URL parameters
+        const defaultIonToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI4MDNiNDQ4Yi1hMzg0LTQxYzEtYjMxYy00NGJlMjBiN2I4YzYiLCJpZCI6NDA2NzI3LCJpYXQiOjE3NzQwNTEzMzd9.W410ifK9UItmiq6mZIr0ot8JXGgi4T9mCBc9GIUaykA";
+        const defaultGoogleKey = "";
+
+        const ionToken = urlParams.get('token') || defaultIonToken;
+        const googleKey = urlParams.get('googleKey') || defaultGoogleKey;
+        const defaultLat = parseFloat(urlParams.get('lat')) || 37.7749;
+        const defaultLon = parseFloat(urlParams.get('lon')) || -122.4194;
+        const targetName = urlParams.get('name') || "Default Target";
+
+        // Set token
+        if (ionToken) {
+            Cesium.Ion.defaultAccessToken = ionToken;
+        }
+
+        // Update HUD display values
+        function updateHUD(lat, lon, range, heading, pitch, statusText) {
+            document.getElementById('hud-lat').innerText = parseFloat(lat).toFixed(6);
+            document.getElementById('hud-lon').innerText = parseFloat(lon).toFixed(6);
+            document.getElementById('hud-alt').innerText = Math.round(range) + ' m';
+            document.getElementById('hud-heading').innerText = Math.round(heading) + '°';
+            document.getElementById('hud-pitch').innerText = Math.round(pitch) + '°';
+            document.getElementById('hud-loc').innerText = targetName;
+            if (statusText) {
+                document.getElementById('hud-status').innerText = statusText;
+                if (statusText === "READY" || statusText === "CAPTURING") {
+                    document.getElementById('hud-status').style.color = "#1dd1a1";
+                } else if (statusText === "ADJUSTING") {
+                    document.getElementById('hud-status').style.color = "#4facfe";
+                } else {
+                    document.getElementById('hud-status').style.color = "#ff9f43";
+                }
+            }
+        }
+
+        // Initialize Cesium
+        async function init() {
+            try {
+                if (ionToken) {
+                    try {
+                        terrainProvider = await Cesium.createWorldTerrainAsync();
+                    } catch (e) {
+                        console.warn("Failed to load Ion terrain, falling back to flat terrain", e);
+                    }
+                } else {
+                    console.log("No Cesium Ion token provided. Using OpenStreetMap imagery and flat terrain.");
+                }
+
+                // Initialize the viewer with optimized settings for performance and photography
+                viewer = new Cesium.Viewer('cesiumContainer', {
+                    terrainProvider: terrainProvider,
+                    baseLayer: false, // Disable default Bing Maps
+                    animation: false,
+                    baseLayerPicker: false,
+                    fullscreenButton: false,
+                    vrButton: false,
+                    geocoder: false,
+                    homeButton: false,
+                    infoBox: false,
+                    sceneModePicker: false,
+                    selectionIndicator: false,
+                    timeline: false,
+                    navigationHelpButton: false,
+                    navigationInstructionsInitiallyVisible: false,
+                    shadows: true
+                });
+
+                // Add OpenStreetMap base imagery layer
+                const osmProvider = new Cesium.OpenStreetMapImageryProvider({
+                    url: 'https://tile.openstreetmap.org/'
+                });
+                viewer.imageryLayers.addImageryProvider(osmProvider);
+
+                // Configure lighting for photorealistic visuals
+                viewer.scene.globe.enableLighting = true;
+                viewer.scene.highDynamicRange = true;
+
+                // Load 3D Buildings
+                let googleTilesetLoaded = false;
+
+                if (googleKey) {
+                    try {
+                        const googleTileset = await Cesium.createGooglePhotorealistic3DTileset({
+                            key: googleKey
+                        });
+                        active3dTileset = viewer.scene.primitives.add(googleTileset);
+                        viewer.scene.globe.show = false; // Hide standard globe to show Google's photorealistic ground textures
+                        googleTilesetLoaded = true;
+                        console.log("Loaded Google Photorealistic 3D Tiles successfully using Google API Key.");
+                    } catch (e) {
+                        console.warn("Failed to load Google 3D Tiles using Google API Key:", e);
+                    }
+                } else if (ionToken) {
+                    try {
+                        console.log("Attempting to load Google Photorealistic 3D Tiles using Cesium Ion Token...");
+                        const googleTileset = await Cesium.createGooglePhotorealistic3DTileset();
+                        active3dTileset = viewer.scene.primitives.add(googleTileset);
+                        viewer.scene.globe.show = false; // Hide standard globe to show Google's photorealistic ground textures
+                        googleTilesetLoaded = true;
+                        console.log("Loaded Google Photorealistic 3D Tiles successfully using Ion token wrapper.");
+                    } catch (e) {
+                        console.warn("createGooglePhotorealistic3DTileset failed, trying asset ID 2275207...", e);
+                        try {
+                            const googleTileset = await Cesium.Cesium3DTileset.fromIonAssetId(2275207);
+                            active3dTileset = viewer.scene.primitives.add(googleTileset);
+                            viewer.scene.globe.show = false;
+                            googleTilesetLoaded = true;
+                            console.log("Loaded Google Photorealistic 3D Tiles successfully using Asset ID 2275207.");
+                        } catch (assetError) {
+                            console.warn("Failed to load Google 3D Tiles using Ion token, falling back to OSM Buildings:", assetError);
+                        }
+                    }
+                }
+
+                if (!googleTilesetLoaded) {
+                    viewer.scene.globe.show = true; // Ensure standard globe is visible
+                    await loadOsmBuildings();
+                }
+
+                // Initial position Setup
+                updateCamera(defaultLon, defaultLat, 500, 0, -30);
+                updateHUD(defaultLat, defaultLon, 500, 0, -30, "READY");
+
+                // Start checking tile load progress
+                checkTileLoading();
+
+                // Check if path parameter exists to start flight animation
+                const mode = urlParams.get('mode');
+                const pathStr = urlParams.get('path');
+                if (mode === 'path' && pathStr) {
+                    setupPathFlight(pathStr);
+                }
+
+            } catch (error) {
+                console.error("Error initializing Cesium:", error);
+                document.getElementById('hud-status').innerText = "INIT ERROR";
+                document.getElementById('hud-status').style.color = "#ff6b6b";
+            }
+        }
+
+        async function loadOsmBuildings() {
+            if (!ionToken) {
+                console.log("No Cesium Ion token provided. Skipping OSM Buildings loading.");
+                return;
+            }
+            try {
+                const osmBuildings = await Cesium.Cesium3DTileset.fromIonAssetId(96188);
+                active3dTileset = viewer.scene.primitives.add(osmBuildings);
+                console.log("Loaded Cesium OSM Buildings successfully.");
+            } catch (e) {
+                console.error("Error loading OSM Buildings:", e);
+            }
+        }
+
+        // Estimate building height using address keywords and active Cesium 3D scene depth clamping
+        function estimateBuildingHeight(lat, lon, addressName) {
+            let height = 30; // default height for standard medium buildings
+            const query = (addressName || "").toLowerCase();
+            
+            // Standard heuristics based on address text keywords
+            const tallKeywords = ['tower', 'tour', 'skyscraper', 'needle', 'burj', 'building', 'bridge', 'cathedral', 'church', 'basilica', 'monument', 'statue', 'palace'];
+            const hugeKeywords = ['eiffel', 'burj khalifa', 'shanghai tower', 'empire state', 'one world trade', 'taipei 101', 'willis', 'cn tower', 'space needle'];
+            const smallKeywords = ['house', 'home', 'residence', 'villa', 'shop', 'office', 'store', 'cabin', 'cottage'];
+
+            if (hugeKeywords.some(kw => query.includes(kw))) {
+                height = 320; // Eiffel Tower, CN Tower, Burj Khalifa scale
+            } else if (tallKeywords.some(kw => query.includes(kw))) {
+                height = 120; // Skyscraper, Monument scale
+            } else if (smallKeywords.some(kw => query.includes(kw))) {
+                height = 12;  // Small residential house
+            }
+            
+            // Query actual loaded Cesium 3D Tiles / Google photorealistic 3D Tiles scene height if possible
+            try {
+                if (viewer && viewer.scene) {
+                    const position = Cesium.Cartographic.fromDegrees(lon, lat);
+                    const sampledHeight = viewer.scene.sampleHeight(position);
+                    const terrainHeight = viewer.scene.globe.getHeight(position) || 0;
+                    
+                    if (sampledHeight !== undefined && sampledHeight > terrainHeight) {
+                        const calculatedHeight = sampledHeight - terrainHeight;
+                        if (calculatedHeight > 2) {
+                            height = calculatedHeight;
+                            console.log("Sampled actual building height in viewer: " + height + "m");
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn("Failed to sample height from tileset, using heuristic.", e);
+            }
+            
+            return height;
+        }
+
+        // Global functions for external control (Playwright)
+        
+        // Reposition camera looking at a specific point
+        function updateCamera(lon, lat, range, headingDegrees, pitchDegrees) {
+            if (!viewer) return;
+            
+            const buildingHeight = estimateBuildingHeight(lat, lon, targetName);
+            const targetAltitude = buildingHeight / 2; // Center camera on the middle of the structure
+            const adjustedRange = Math.max(120, Math.max(range, buildingHeight * 2.2)); // Prevent clipping and auto-fit entire building
+            
+            const center = Cesium.Cartesian3.fromDegrees(lon, lat, targetAltitude);
+            const heading = Cesium.Math.toRadians(headingDegrees);
+            const pitch = Cesium.Math.toRadians(pitchDegrees);
+            
+            // Set lookAt transform
+            viewer.camera.lookAt(center, new Cesium.HeadingPitchRange(heading, pitch, adjustedRange));
+            
+            // Unlock camera transform so further movements are relative to world coordinates
+            viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+            
+            updateHUD(lat, lon, adjustedRange, headingDegrees, pitchDegrees, "ADJUSTING");
+        }
+
+        // Check if all tiles are loaded
+        function isLoaded() {
+            if (!viewer) return false;
+            return viewer.scene.globe.tilesLoaded;
+        }
+
+        // Monitor tile loading progress for HUD
+        function checkTileLoading() {
+            setInterval(() => {
+                if (isLoaded()) {
+                    document.getElementById('loading-indicator').style.display = 'none';
+                    document.getElementById('hud-spinner').style.display = 'none';
+                    if (document.getElementById('hud-status').innerText === "ADJUSTING") {
+                        document.getElementById('hud-status').innerText = "READY";
+                        document.getElementById('hud-status').style.color = "#1dd1a1";
+                    }
+                } else {
+                    document.getElementById('loading-indicator').style.display = 'flex';
+                    document.getElementById('hud-spinner').style.display = 'block';
+                }
+            }, 300);
+        }
+
+        // Setup path flight animation: countdown 20 seconds, then play
+        function setupPathFlight(pathStr) {
+            let pathPts = [];
+            try {
+                pathPts = JSON.parse(decodeURIComponent(pathStr));
+            } catch (e) {
+                console.error("Failed to parse path query parameter:", e);
+                return;
+            }
+            if (pathPts.length === 0) return;
+
+            // Create countdown overlay DOM element
+            const overlay = document.createElement('div');
+            overlay.style.position = 'fixed';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.width = '100%';
+            overlay.style.height = '100%';
+            overlay.style.background = 'rgba(6, 9, 19, 0.95)';
+            overlay.style.zIndex = '9999';
+            overlay.style.display = 'flex';
+            overlay.style.flexDirection = 'column';
+            overlay.style.alignItems = 'center';
+            overlay.style.justifyContent = 'center';
+            overlay.style.color = '#fff';
+            overlay.style.fontFamily = 'sans-serif';
+            overlay.innerHTML = `
+                <div class="loader-ring" style="width: 60px; height: 60px; border: 3px solid rgba(255,255,255,0.05); border-top: 3px solid #00f2fe; border-radius: 50%; animation: spin 1.2s linear infinite; margin-bottom: 20px;"></div>
+                <h2 style="color: #00f2fe; margin-bottom: 10px; font-weight: 800; letter-spacing: 1px;">LOADING 3D TERRAIN & MAP TILES</h2>
+                <p style="color: #cbd5e1; font-size: 14px; margin-bottom: 10px;">Waiting 20 seconds for high-resolution pixels to fully load...</p>
+                <h1 id="countdown-timer" style="font-size: 64px; font-weight: 900; margin-top: 10px; color: #fff; text-shadow: 0 0 20px rgba(0,242,254,0.3);">20</h1>
+            `;
+            document.body.appendChild(overlay);
+
+            // Add rotation keyframe style dynamically if needed
+            if (!document.getElementById('spin-style')) {
+                const style = document.createElement('style');
+                style.id = 'spin-style';
+                style.innerHTML = `
+                    @keyframes spin {
+                        0% { transform: rotate(0deg); }
+                        100% { transform: rotate(360deg); }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+
+            let secondsRemaining = 20;
+            const timerInterval = setInterval(() => {
+                secondsRemaining--;
+                const timerEl = document.getElementById('countdown-timer');
+                if (timerEl) {
+                    timerEl.innerText = secondsRemaining;
+                }
+                if (secondsRemaining <= 0) {
+                    clearInterval(timerInterval);
+                    if (document.body.contains(overlay)) {
+                        document.body.removeChild(overlay);
+                    }
+                    // Run flight animation
+                    const range = parseFloat(urlParams.get('range')) || 300;
+                    const pitch = parseFloat(urlParams.get('pitch')) || -30;
+                    runPathFlight(pathPts, range, pitch);
+                }
+            }, 1000);
+        }
+
+        // Smooth camera movement along waypoints
+        function headingBetween(lat1, lon1, lat2, lon2) {
+            const dLon = Cesium.Math.toRadians(lon2 - lon1);
+            const lat1Rad = Cesium.Math.toRadians(lat1);
+            const lat2Rad = Cesium.Math.toRadians(lat2);
+            const y = Math.sin(dLon) * Math.cos(lat2Rad);
+            const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
+            return (Cesium.Math.toDegrees(Math.atan2(y, x)) + 360) % 360;
+        }
+
+        function lerpHeading(h1, h2, t) {
+            let diff = h2 - h1;
+            while (diff < -180) diff += 360;
+            while (diff > 180) diff -= 360;
+            return (h1 + diff * t + 360) % 360;
+        }
+
+        function runPathFlight(pathPts, range, pitch) {
+            console.log("Starting Path Flight with waypoints:", pathPts);
+            
+            // Build the full frame list
+            const frames = 180; // total frames for a smooth 7.5-second web animation at 24fps
+            const frameList = [];
+            const nSegs = pathPts.length - 1;
+            const framesPerSeg = Math.max(1, Math.floor(frames / nSegs));
+
+            for (let segIdx = 0; segIdx < nSegs; segIdx++) {
+                const p1 = pathPts[segIdx];
+                const p2 = pathPts[segIdx + 1];
+                const bearing = headingBetween(p1.lat, p1.lon, p2.lat, p2.lon);
+
+                let nextBearing = bearing;
+                if (segIdx + 2 < pathPts.length) {
+                    const p3 = pathPts[segIdx + 2];
+                    nextBearing = headingBetween(p2.lat, p2.lon, p3.lat, p3.lon);
+                }
+
+                for (let f = 0; f < framesPerSeg; f++) {
+                    const t = f / framesPerSeg;
+                    frameList.push({
+                        lat: p1.lat + (p2.lat - p1.lat) * t,
+                        lon: p1.lon + (p2.lon - p1.lon) * t,
+                        range: range,
+                        pitch: pitch,
+                        heading: lerpHeading(bearing, nextBearing, t)
+                    });
+                }
+            }
+            
+            // Pad remaining frames
+            while (frameList.length < frames) {
+                frameList.push(frameList[frameList.length - 1]);
+            }
+
+            // Start animation loop
+            let currentFrame = 0;
+            
+            function animate() {
+                if (currentFrame >= frameList.length) {
+                    console.log("Path flight complete!");
+                    updateHUD(0, 0, range, 0, pitch, "MISSION COMPLETE");
+                    return;
+                }
+                
+                const cam = frameList[currentFrame];
+                // Move camera to look at the waypoint center (altitude 25m)
+                const center = Cesium.Cartesian3.fromDegrees(cam.lon, cam.lat, 25);
+                const heading = Cesium.Math.toRadians(cam.heading);
+                const pitchRad = Cesium.Math.toRadians(cam.pitch);
+                
+                viewer.camera.lookAt(center, new Cesium.HeadingPitchRange(heading, pitchRad, cam.range));
+                viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+
+                updateHUD(cam.lat, cam.lon, cam.range, cam.heading, cam.pitch, `FLIGHT FRAME ${currentFrame}/${frames}`);
+                
+                currentFrame++;
+                requestAnimationFrame(animate);
+            }
+            
+            animate();
+        }
+
+        // Trigger initialization
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
