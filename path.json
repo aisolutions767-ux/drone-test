@@ -1,0 +1,83 @@
+{
+  "name": "path",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "4476c2b0-d034-4964-9b23-51c7cce0add9",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "09720596-6e22-40d0-94d8-70a09dabb5c5",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        250,
+        250
+      ],
+      "webhookId": "4476c2b0-d034-4964-9b23-51c7cce0add9"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://drone-test-production-c060.up.railway.app/render",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"location\": \"{{ $json.body.location }}\",\n  \"mode\": \"path\",\n  \"path\": {{ JSON.stringify($json.body.path) }},\n  \"range\": {{ $json.body.range }},\n  \"pitch\": {{ $json.body.pitch }},\n  \"heading\": {{ $json.body.heading }},\n  \"frames\": {{ $json.body.frames }}\n}",
+        "options": {}
+      },
+      "id": "a9042b45-132d-45db-9c36-7c09d57a9fe1",
+      "name": "Render Path Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        450,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"success\",\n  \"message\": \"Drone mission complete\",\n  \"mode\": \"path\",\n  \"location\": \"{{ $node[\"Webhook\"].json.body.location }}\",\n  \"video\": \"{{ $json.video }}\",\n  \"video_exists\": {{ $json.video_exists }}\n}",
+        "options": {}
+      },
+      "id": "c10ef2a2-3f1a-4712-88b9-87a27eb2a201",
+      "name": "Return Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        650,
+        250
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Render Path Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Render Path Video": {
+      "main": [
+        [
+          {
+            "node": "Return Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
