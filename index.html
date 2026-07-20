@@ -1,0 +1,2132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Drone Control Station</title>
+    <!-- Load configuration credentials -->
+    <script src="config.js"></script>
+    <!-- Leaflet Map CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <!-- Cesium JS & CSS for Live Target Preview -->
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Cesium.js"></script>
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #060913;
+            --bg-card: rgba(15, 23, 42, 0.6);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-cyan: #00f2fe;
+            --accent-blue: #4facfe;
+            --accent-green: #00f5a0;
+            --accent-pink: #ff007f;
+            --accent-orange: #ff9f43;
+            --accent-red: #ff5e62;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(at 10% 20%, rgba(79, 172, 254, 0.08) 0px, transparent 50%),
+                radial-gradient(at 90% 80%, rgba(255, 0, 127, 0.04) 0px, transparent 50%);
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 25px 40px;
+            border-bottom: 1px solid var(--border-color);
+            background: rgba(6, 9, 19, 0.8);
+            backdrop-filter: blur(12px);
+            z-index: 10;
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .pulse-dot {
+            width: 10px;
+            height: 10px;
+            background-color: var(--accent-green);
+            border-radius: 50%;
+            box-shadow: 0 0 12px var(--accent-green);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.9); opacity: 0.6; }
+            50% { transform: scale(1.1); opacity: 1; box-shadow: 0 0 18px var(--accent-green); }
+            100% { transform: scale(0.9); opacity: 0.6; }
+        }
+
+        h1 {
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            background: linear-gradient(135deg, #fff 0%, var(--text-secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 12px;
+            color: var(--accent-cyan);
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+
+        .main-container {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 450px 1fr;
+            padding: 30px;
+            gap: 30px;
+            max-width: 1800px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        /* Glassmorphism Cards */
+        .glass-panel {
+            background: var(--bg-card);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+            overflow-y: auto;
+        }
+
+        .panel-title {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--accent-blue);
+            border-left: 3px solid var(--accent-cyan);
+            padding-left: 12px;
+            margin-bottom: 5px;
+        }
+
+        /* Form Inputs */
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            position: relative;
+        }
+
+        label {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--text-secondary);
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 14px 18px;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 14px;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 15px rgba(0, 242, 254, 0.15);
+        }
+
+        /* Autocomplete dropdown styling */
+        .autocomplete-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: #0f172a;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-top: none;
+            border-radius: 0 0 10px 10px;
+            max-height: 220px;
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            display: none;
+        }
+
+        .autocomplete-item {
+            padding: 12px 18px;
+            font-size: 13px;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.2s ease;
+        }
+
+        .autocomplete-item:last-child {
+            border-bottom: none;
+        }
+
+        .autocomplete-item:hover {
+            background: rgba(79, 172, 254, 0.15);
+            color: var(--accent-cyan);
+        }
+
+        .coords-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .coords-grid input {
+            font-family: 'Share Tech Mono', monospace;
+            background: rgba(6, 9, 19, 0.5);
+            color: var(--accent-green);
+        }
+
+        /* Sliders */
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .slider-value {
+            font-family: 'Share Tech Mono', monospace;
+            color: var(--accent-cyan);
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.1);
+            outline: none;
+            margin: 10px 0;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--accent-blue);
+            cursor: pointer;
+            box-shadow: 0 0 10px var(--accent-blue);
+            transition: all 0.2s ease;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            background: var(--accent-cyan);
+            box-shadow: 0 0 15px var(--accent-cyan);
+        }
+
+        /* Switch toggle */
+        .switch-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(15, 23, 42, 0.4);
+            border: 1px solid var(--border-color);
+            padding: 15px 20px;
+            border-radius: 12px;
+        }
+
+        .switch-label {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .switch-title {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .switch-desc {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 26px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider-round {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.1);
+            transition: .4s;
+            border-radius: 34px;
+            border: 1px solid var(--border-color);
+        }
+
+        .slider-round:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: var(--text-primary);
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider-round {
+            background-color: rgba(79, 172, 254, 0.3);
+            border-color: var(--accent-blue);
+        }
+
+        input:checked + .slider-round:before {
+            transform: translateX(24px);
+            background-color: var(--accent-cyan);
+            box-shadow: 0 0 8px var(--accent-cyan);
+        }
+
+        /* Launch Button */
+        .launch-btn {
+            background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-cyan) 100%);
+            border: none;
+            border-radius: 12px;
+            color: #060913;
+            font-family: inherit;
+            font-size: 16px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            padding: 18px;
+            cursor: pointer;
+            box-shadow: 0 8px 25px rgba(79, 172, 254, 0.3);
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .launch-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 35px rgba(0, 242, 254, 0.5);
+            color: #fff;
+        }
+
+        .launch-btn:active {
+            transform: translateY(1px);
+        }
+
+        /* Map Panel Container */
+        .map-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        .map-overlay-tips {
+            position: absolute;
+            bottom: 25px;
+            left: 25px;
+            background: rgba(10, 15, 28, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border-color);
+            border-radius: 30px;
+            padding: 10px 20px;
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            z-index: 2;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Fullscreen Cesium Live Preview Overlay */
+        .preview-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1500;
+            display: none;
+            background: var(--bg-primary);
+        }
+
+        #previewCesiumContainer {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        /* Floating glassmorphic sidebar inside preview window */
+        .preview-sidebar {
+            position: absolute;
+            top: 30px;
+            left: 30px;
+            bottom: 30px;
+            width: 420px;
+            background: rgba(10, 15, 28, 0.8);
+            backdrop-filter: blur(25px);
+            border: 1.5px solid rgba(255, 255, 255, 0.15);
+            border-radius: 24px;
+            padding: 30px;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            gap: 22px;
+            z-index: 20;
+            color: var(--text-primary);
+            overflow-y: auto;
+        }
+
+        .preview-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-top: auto;
+        }
+
+        .preview-actions button {
+            width: 100%;
+            border: none;
+            border-radius: 12px;
+            padding: 18px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .confirm-btn {
+            background: linear-gradient(135deg, var(--accent-green) 0%, var(--accent-cyan) 100%);
+            color: #060913;
+            box-shadow: 0 5px 15px rgba(0, 245, 160, 0.3);
+        }
+
+        .confirm-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0, 245, 160, 0.5);
+            color: #fff;
+        }
+
+        .cancel-btn {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color) !important;
+        }
+
+        .cancel-btn:hover {
+            transform: translateY(-2px);
+            background: rgba(255, 94, 98, 0.2);
+            color: var(--accent-red);
+            border-color: rgba(255, 94, 98, 0.4) !important;
+        }
+
+        /* Status Overlay Modal (Final Success/Fail Node) */
+        .status-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(6, 9, 19, 0.85);
+            backdrop-filter: blur(15px);
+            z-index: 2000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.4s ease;
+        }
+
+        .status-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .status-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            padding: 40px;
+            max-width: 500px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.6);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            transform: scale(0.9);
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .status-overlay.active .status-card {
+            transform: scale(1);
+        }
+
+        .status-title {
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--accent-cyan);
+        }
+
+        .status-message {
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        /* Custom spinner for dispatch */
+        .loader-ring {
+            width: 70px;
+            height: 70px;
+            border: 3px solid rgba(255, 255, 255, 0.05);
+            border-top: 3px solid var(--accent-cyan);
+            border-right: 3px solid var(--accent-blue);
+            border-radius: 50%;
+            animation: spin 1.2s linear infinite;
+            box-shadow: 0 0 20px rgba(79, 172, 254, 0.2);
+            margin: 10px 0;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .success-icon {
+            width: 70px;
+            height: 70px;
+            background: rgba(0, 245, 160, 0.1);
+            border: 2px solid var(--accent-green);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent-green);
+            font-size: 32px;
+            box-shadow: 0 0 20px rgba(0, 245, 160, 0.2);
+            margin: 10px 0;
+            font-weight: bold;
+        }
+
+        .error-icon {
+            width: 70px;
+            height: 70px;
+            background: rgba(255, 94, 98, 0.1);
+            border: 2px solid var(--accent-red);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent-red);
+            font-size: 32px;
+            box-shadow: 0 0 20px rgba(255, 94, 98, 0.2);
+            margin: 10px 0;
+            font-weight: bold;
+        }
+
+        .close-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            padding: 12px 25px;
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: inherit;
+            cursor: pointer;
+            font-weight: 600;
+            margin-top: 10px;
+            transition: all 0.2s ease;
+        }
+
+        .close-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        /* JSON debug block */
+        pre {
+            background: rgba(6, 9, 19, 0.8);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 15px;
+            color: var(--accent-green);
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 11px;
+            text-align: left;
+            width: 100%;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        /* Responsive */
+        @media (max-width: 1000px) {
+            .main-container {
+                grid-template-columns: 1fr;
+            }
+            .map-panel {
+                height: 450px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-section">
+            <div class="pulse-dot"></div>
+            <div>
+                <h1>Virtual Drone Control</h1>
+                <div class="subtitle">Mission Control Center</div>
+            </div>
+        </div>
+        <div>
+            <span class="subtitle" style="color: var(--text-secondary);">SYS STATUS: </span>
+            <span class="subtitle" style="color: var(--accent-green);">ONLINE</span>
+        </div>
+    </header>
+
+    <div class="main-container">
+        <!-- Control Station Panel -->
+        <div class="glass-panel">
+            <div>
+                <h2 class="panel-title">Property Selector</h2>
+                <p style="font-size: 13px; color: var(--text-secondary); margin-top: 5px;">
+                    Search for an address or click directly on the map to target coordinates.
+                </p>
+            </div>
+
+            <!-- Address Search -->
+            <div class="form-group">
+                <label for="address-input">Search Target Address</label>
+                <div class="input-wrapper">
+                    <input type="text" id="address-input" placeholder="e.g. Space Needle, Seattle" autocomplete="off">
+                    <div id="autocomplete-list" class="autocomplete-dropdown"></div>
+                </div>
+            </div>
+
+            <!-- Coords (Updated dynamically) -->
+            <div class="coords-grid">
+                <div class="form-group">
+                    <label for="lat-input">Latitude</label>
+                    <input type="text" id="lat-input" value="37.7749" readonly>
+                </div>
+                <div class="form-group">
+                    <label for="lon-input">Longitude</label>
+                    <input type="text" id="lon-input" value="-122.4194" readonly>
+                </div>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid var(--border-color);">
+
+            <div>
+                <h2 class="panel-title">Flight Telemetry</h2>
+            </div>
+
+            <!-- Orbit Toggle Switch -->
+            <div class="switch-container">
+                <div class="switch-label">
+                    <span class="switch-title">Stitch Orbit Video</span>
+                    <span class="switch-desc">Generates a 360° drone orbit MP4</span>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="orbit-switch" checked>
+                    <span class="slider-round"></span>
+                </label>
+            </div>
+
+            <!-- Altitude (Range) Slider -->
+            <div class="form-group">
+                <div class="slider-header">
+                    <label for="altitude-slider">Drone Altitude (Range)</label>
+                    <span id="altitude-val" class="slider-value">300m</span>
+                </div>
+                <input type="range" id="altitude-slider" min="100" max="600" step="10" value="300">
+            </div>
+
+            <!-- Camera Pitch Slider -->
+            <div class="form-group">
+                <div class="slider-header">
+                    <label for="pitch-slider">Camera Pitch</label>
+                    <span id="pitch-val" class="slider-value">-30°</span>
+                </div>
+                <input type="range" id="pitch-slider" min="-90" max="-10" step="5" value="-30">
+            </div>
+
+            <!-- Frame Count Slider -->
+            <div class="form-group" id="frames-group">
+                <div class="slider-header">
+                    <label for="frames-slider">Video Frames</label>
+                    <span id="frames-val" class="slider-value">36 frames</span>
+                </div>
+                <input type="range" id="frames-slider" min="12" max="100" step="4" value="36">
+            </div>
+
+            <!-- Dispatch Action -->
+            <button class="launch-btn" id="launch-button">
+                Launch Virtual Drone ⚡
+            </button>
+        </div>
+
+        <!-- Interactive Map Panel -->
+        <div class="map-panel">
+            <div id="map"></div>
+            <div class="map-overlay-tips">
+                <span class="pulse-dot" style="background-color: var(--accent-pink); box-shadow: 0 0 8px var(--accent-pink);"></span>
+                <span>Click map to relocate target pin & flight path</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Fullscreen Cesium Preview Overlay -->
+    <div class="preview-overlay" id="preview-overlay">
+        <div id="previewCesiumContainer"></div>
+        
+        <!-- Live Staging Telemetry Controller in Preview Sidebar -->
+        <div class="preview-sidebar">
+            <div>
+                <h2 class="panel-title" style="color: var(--accent-cyan); border-color: var(--accent-cyan);">Camera Staging</h2>
+                <p id="preview-prompt-text" style="font-size: 13px; color: var(--text-secondary); margin-top: 10px; line-height: 1.5;">
+                    Adjust the drone parameters in 3D to frame the building.
+                </p>
+            </div>
+
+            <!-- Target Selection Mode Tab Controller -->
+            <div class="form-group">
+                <label>Drone Targeting Mode</label>
+                <div style="display: flex; gap: 5px; background: rgba(15, 23, 42, 0.6); padding: 5px; border-radius: 10px; border: 1px solid var(--border-color);">
+                    <button id="mode-single-btn" class="mode-tab active" style="flex:1; padding: 8px; font-size: 11px; border:none; border-radius: 6px; cursor:pointer; background: var(--accent-cyan); color:#060913; font-weight:bold; transition:all 0.2s ease;">📌 Single</button>
+                    <button id="mode-area-btn" class="mode-tab" style="flex:1; padding: 8px; font-size: 11px; border:none; border-radius: 6px; cursor:pointer; background: transparent; color:#fff; font-weight:bold; transition:all 0.2s ease;">📐 Area</button>
+                    <button id="mode-path-btn" class="mode-tab" style="flex:1; padding: 8px; font-size: 11px; border:none; border-radius: 6px; cursor:pointer; background: transparent; color:#fff; font-weight:bold; transition:all 0.2s ease;">📍 Path</button>
+                </div>
+            </div>
+
+            <!-- Staging Range Slider -->
+            <div class="form-group">
+                <div class="slider-header">
+                    <label for="preview-range-slider">Focal Range (Distance)</label>
+                    <span id="preview-range-val" class="slider-value">450m</span>
+                </div>
+                <input type="range" id="preview-range-slider" min="100" max="1500" step="10" value="450">
+            </div>
+
+            <!-- Staging Pitch Slider -->
+            <div class="form-group">
+                <div class="slider-header">
+                    <label for="preview-pitch-slider">Camera Pitch</label>
+                    <span id="preview-pitch-val" class="slider-value">-30°</span>
+                </div>
+                <input type="range" id="preview-pitch-slider" min="-90" max="-10" step="5" value="-30">
+            </div>
+
+            <!-- Staging Heading (Angle) Slider -->
+            <div class="form-group">
+                <div class="slider-header">
+                    <label for="preview-heading-slider">Start Heading (Angle)</label>
+                    <span id="preview-heading-val" class="slider-value">0°</span>
+                </div>
+                <input type="range" id="preview-heading-slider" min="0" max="360" step="5" value="0">
+            </div>
+
+            <!-- Selected Vertex Altitude Slider (Only displayed when drawing vertices are active) -->
+            <div id="selected-vertex-altitude-group" class="form-group" style="display:none; background: rgba(30, 41, 59, 0.4); padding: 12px; border-radius: 8px; border: 1px dashed var(--accent-cyan);">
+                <div class="slider-header">
+                    <label style="color: var(--accent-cyan);">Selected Point Height</label>
+                    <span id="selected-vertex-altitude-val" class="slider-value" style="color: var(--accent-cyan);">0m</span>
+                </div>
+                <input type="range" id="selected-vertex-altitude-slider" min="0" max="500" step="1" value="0">
+                <span style="font-size: 10px; color: var(--text-secondary); margin-top: 4px; display: block;">💡 Drag slider or use W/S or Up/Down keys to adjust vertical height in 3D.</span>
+            </div>
+
+            <!-- 3D Object Extrusion Height Slider (Only displayed in Area / 3D Object mode) -->
+            <div id="area-extrusion-group" class="form-group" style="display:none; background: rgba(30, 41, 59, 0.4); padding: 12px; border-radius: 8px; border: 1px dashed var(--accent-cyan);">
+                <div class="slider-header">
+                    <label style="color: var(--accent-cyan);">3D Shape Height (Extrusion)</label>
+                    <span id="area-extrusion-val" class="slider-value" style="color: var(--accent-cyan);">50m</span>
+                </div>
+                <input type="range" id="area-extrusion-slider" min="0" max="300" step="1" value="50">
+                <span style="font-size: 10px; color: var(--text-secondary); margin-top: 4px; display: block;">💡 Lifts the polygon boundaries into a 3D volumetric object enclosing target buildings.</span>
+            </div>
+
+            <!-- Active Drawing Info & Reset Actions -->
+            <div id="drawing-controls-row" style="display:none; justify-content:space-between; align-items:center; background:rgba(15, 23, 42, 0.4); padding:12px 18px; border-radius:12px; border:1px solid var(--border-color);">
+                <span id="drawing-status-text" style="font-size:12px; font-weight:bold; color:var(--accent-cyan);">Vertices: 0</span>
+                <button id="clear-drawing-btn" style="width:auto; padding:6px 14px; font-size:11px; border-radius:6px; background:rgba(255,94,98,0.15); border:1px solid rgba(255,94,98,0.3); color:var(--accent-red); cursor:pointer; font-weight:bold; transition:all 0.2s ease;">Clear Drawing ⟲</button>
+            </div>
+
+            <!-- Confirmation Actions -->
+            <div class="preview-actions">
+                <button class="confirm-btn" id="confirm-btn">Yes, Start Drone Mission 🚀</button>
+                <button class="cancel-btn" id="cancel-btn">No, Adjust Map Pin ⚙️</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status overlay modal -->
+    <div class="status-overlay" id="status-modal">
+        <div class="status-card" id="status-card">
+            <!-- Content will be replaced dynamically -->
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script>
+        // Webhook configurations for each flight mode
+        const N8N_SINGLE_URL  = 'https://bjl82de9.rpcl.app/webhook/86f10356-6bfb-4f34-b31a-60dc4499c4ff';
+        const N8N_AREA_URL    = 'https://bjl82de9.rpcl.app/webhook/03ad63cd-9692-4a42-9781-55c9e5f214c7';
+        const N8N_PATH_URL    = 'https://bjl82de9.rpcl.app/webhook/4476c2b0-d034-4964-9b23-51c7cce0add9';
+        const N8N_STAGING_URL = 'https://bjl82de9.rpcl.app/webhook/3cbfa89e-df3c-48c0-bc6f-ea34526d11f9';
+
+        // Cesium Fallback Ion Token
+        const defaultIonToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI4MDNiNDQ4Yi1hMzg0LTQxYzEtYjMxYy00NGJlMjBiN2I4YzYiLCJpZCI6NDA2NzI3LCJpYXQiOjE3NzQwNTEzMzd9.W410ifK9UItmiq6mZIr0ot8JXGgi4T9mCBc9GIUaykA";
+
+        // State variables
+        let map = null;
+        let marker = null;
+        let orbitCircle = null; // Colorful path circle
+        let centerDot = null;   // Pulsing center dot
+        let searchTimeout = null;
+        let previewViewer = null; // Cesium viewer instance for target preview
+
+        // AI-derived camera staging offsets and altitude center point
+        let stagedLatOffset = 0.0;
+        let stagedLonOffset = 0.0;
+        let stagedTargetAltitude = 15.0;
+
+        // Custom 3D clicked target state variables
+        let stagedClickedLat = null;
+        let stagedClickedLon = null;
+        let targetPinEntity = null;
+        let previewClickEventHandler = null;
+
+        // Custom 3D drawing area and waypoint path state variables
+        let previewTargetMode = 'single'; // 'single' | 'area' | 'path'
+        let stagedDrawingPoints = [];     // Array of Cartesian3 vertices
+        let stagedVerticesList = [];       // Array of { lat, lon, height } objects
+        let drawingEntitiesList = [];      // Keep track of vertex pin entities
+        let activeDynamicShapeEntity = null; // The polygon or polyline boundary shape entity
+        let activeVertexIndex = null;      // Currently selected vertex index for vertical height editing
+        let stagedExtrusionHeight = 50.0;  // 3D Extrusion height for Area/3D Object mode
+
+        // Form elements
+        const addressInput = document.getElementById('address-input');
+        const autocompleteList = document.getElementById('autocomplete-list');
+        const latInput = document.getElementById('lat-input');
+        const lonInput = document.getElementById('lon-input');
+        const orbitSwitch = document.getElementById('orbit-switch');
+        const framesGroup = document.getElementById('frames-group');
+        const launchBtn = document.getElementById('launch-button');
+
+        // Sliders & Values
+        const altSlider = document.getElementById('altitude-slider');
+        const altVal = document.getElementById('altitude-val');
+        const pitchSlider = document.getElementById('pitch-slider');
+        const pitchVal = document.getElementById('pitch-val');
+        const framesSlider = document.getElementById('frames-slider');
+        const framesVal = document.getElementById('frames-val');
+
+        // Modal/Overlay elements
+        const statusModal = document.getElementById('status-modal');
+        const statusCard = document.getElementById('status-card');
+        const previewOverlay = document.getElementById('preview-overlay');
+        const previewPromptText = document.getElementById('preview-prompt-text');
+        const confirmBtn = document.getElementById('confirm-btn');
+        const cancelBtn = document.getElementById('cancel-btn');
+
+        // Preview sliders
+        const pRangeSlider = document.getElementById('preview-range-slider');
+        const pRangeVal = document.getElementById('preview-range-val');
+        const pPitchSlider = document.getElementById('preview-pitch-slider');
+        const pPitchVal = document.getElementById('preview-pitch-val');
+        const pHeadingSlider = document.getElementById('preview-heading-slider');
+        const pHeadingVal = document.getElementById('preview-heading-val');
+
+        // Height adjustments sliders
+        const pVertexAltGroup = document.getElementById('selected-vertex-altitude-group');
+        const pVertexAltSlider = document.getElementById('selected-vertex-altitude-slider');
+        const pVertexAltVal = document.getElementById('selected-vertex-altitude-val');
+        const pAreaExtrusionGroup = document.getElementById('area-extrusion-group');
+        const pAreaExtrusionSlider = document.getElementById('area-extrusion-slider');
+        const pAreaExtrusionVal = document.getElementById('area-extrusion-val');
+
+        // Initial coords (San Francisco)
+        const initialLat = 37.7749;
+        const initialLon = -122.4194;
+
+        // Initialize Map
+        function initMap() {
+            map = L.map('map', {
+                zoomControl: false
+            }).setView([initialLat, initialLon], 14);
+
+            L.control.zoom({ position: 'topright' }).addTo(map);
+
+            // Load CartoDB Voyager tiles - colorful light map
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                subdomains: 'abcd',
+                maxZoom: 20
+            }).addTo(map);
+
+            const customIcon = L.divIcon({
+                className: 'custom-div-icon',
+                html: `<div style="background-color: var(--accent-pink); width: 16px; height: 16px; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 15px var(--accent-pink); margin: -8px 0 0 -8px;"></div>`,
+                iconSize: [16, 16]
+            });
+
+            marker = L.marker([initialLat, initialLon], {
+                icon: customIcon,
+                draggable: true
+            }).addTo(map);
+
+            centerDot = L.circleMarker([initialLat, initialLon], {
+                radius: 4,
+                color: '#fff',
+                fillColor: 'var(--accent-pink)',
+                fillOpacity: 1,
+                weight: 2
+            }).addTo(map);
+
+            orbitCircle = L.circle([initialLat, initialLon], {
+                color: 'var(--accent-cyan)',
+                fillColor: 'var(--accent-blue)',
+                fillOpacity: 0.08,
+                weight: 3,
+                dashArray: '8, 10',
+                radius: parseInt(altSlider.value)
+            }).addTo(map);
+
+            marker.on('drag', updateOrbitVisuals);
+            marker.on('dragend', function (e) {
+                const position = marker.getLatLng();
+                updateCoordsInputs(position.lat, position.lng);
+                reverseGeocode(position.lat, position.lng);
+            });
+
+            map.on('click', function (e) {
+                const lat = e.latlng.lat;
+                const lon = e.latlng.lng;
+                marker.setLatLng([lat, lon]);
+                updateCoordsInputs(lat, lon);
+                updateOrbitVisuals();
+                reverseGeocode(lat, lon);
+            });
+        }
+
+        // Helper: Update coordinates inputs
+        function updateCoordsInputs(lat, lon) {
+            latInput.value = parseFloat(lat).toFixed(6);
+            lonInput.value = parseFloat(lon).toFixed(6);
+        }
+
+        // Update map circles
+        function updateOrbitVisuals() {
+            if (!orbitCircle || !marker || !centerDot) return;
+            const position = marker.getLatLng();
+            orbitCircle.setLatLng(position);
+            centerDot.setLatLng(position);
+            
+            const radiusMeters = parseInt(altSlider.value);
+            orbitCircle.setRadius(radiusMeters);
+            
+            if (radiusMeters < 250) {
+                orbitCircle.setStyle({ color: 'var(--accent-cyan)', fillColor: 'var(--accent-blue)' });
+            } else if (radiusMeters < 450) {
+                orbitCircle.setStyle({ color: 'var(--accent-pink)', fillColor: 'var(--accent-blue)' });
+            } else {
+                orbitCircle.setStyle({ color: 'var(--accent-orange)', fillColor: 'var(--accent-pink)' });
+            }
+        }
+
+        // Live Address reverse geocoding via Nominatim
+        async function reverseGeocode(lat, lon) {
+            try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18`, {
+                    headers: { 'User-Agent': 'VirtualDroneControlStation/1.0' }
+                });
+                const data = await response.json();
+                if (data && data.display_name) {
+                    addressInput.value = data.display_name;
+                }
+            } catch (e) {
+                console.error("Reverse geocoding error:", e);
+            }
+        }
+
+        // Autocomplete
+        addressInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            const query = addressInput.value.trim();
+            if (query.length < 3) {
+                autocompleteList.style.display = 'none';
+                return;
+            }
+
+            searchTimeout = setTimeout(async () => {
+                try {
+                    const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`, {
+                        headers: { 'User-Agent': 'VirtualDroneControlStation/1.0' }
+                    });
+                    const results = await response.json();
+                    
+                    if (results && results.length > 0) {
+                        autocompleteList.innerHTML = '';
+                        results.forEach(item => {
+                            const div = document.createElement('div');
+                            div.className = 'autocomplete-item';
+                            div.innerText = item.display_name;
+                            div.addEventListener('click', () => {
+                                selectAddress(item.display_name, parseFloat(item.lat), parseFloat(item.lon));
+                            });
+                            autocompleteList.appendChild(div);
+                        });
+                        autocompleteList.style.display = 'block';
+                    } else {
+                        autocompleteList.style.display = 'none';
+                    }
+                } catch (e) {
+                    console.error("Geocoding search error:", e);
+                }
+            }, 350);
+        });
+
+        function selectAddress(displayName, lat, lon) {
+            addressInput.value = displayName;
+            autocompleteList.style.display = 'none';
+            map.setView([lat, lon], 15);
+            marker.setLatLng([lat, lon]);
+            updateCoordsInputs(lat, lon);
+            updateOrbitVisuals();
+        }
+
+        document.addEventListener('click', function(e) {
+            if (e.target !== addressInput) {
+                autocompleteList.style.display = 'none';
+            }
+        });
+
+        orbitSwitch.addEventListener('change', () => {
+            if (orbitSwitch.checked) {
+                framesGroup.style.display = 'flex';
+                orbitCircle.setStyle({ fillOpacity: 0.08, stroke: true });
+            } else {
+                framesGroup.style.display = 'none';
+                orbitCircle.setStyle({ fillOpacity: 0, stroke: false });
+            }
+        });
+
+        altSlider.addEventListener('input', () => {
+            altVal.innerText = altSlider.value + 'm';
+            updateOrbitVisuals();
+        });
+
+        pitchSlider.addEventListener('input', () => {
+            pitchVal.innerText = pitchSlider.value + '°';
+        });
+
+        framesSlider.addEventListener('input', () => {
+            framesVal.innerText = framesSlider.value + ' frames';
+        });
+
+        // Show/Hide overlays helpers
+        function showOverlay(htmlContent) {
+            statusCard.innerHTML = htmlContent;
+            statusModal.classList.add('active');
+        }
+
+        function hideOverlay() {
+            statusModal.classList.remove('active');
+        }
+
+        // --- Live Preview Logic ---
+
+        // Estimate building height using address keywords and active Cesium 3D scene depth clamping
+        function estimateBuildingHeight(lat, lon, addressName) {
+            let height = 30; // default height for standard medium buildings
+            const query = (addressName || "").toLowerCase();
+            
+            const tallKeywords = ['tower', 'tour', 'skyscraper', 'needle', 'burj', 'building', 'bridge', 'cathedral', 'church', 'basilica', 'monument', 'statue', 'palace'];
+            const hugeKeywords = ['eiffel', 'burj khalifa', 'shanghai tower', 'empire state', 'one world trade', 'taipei 101', 'willis', 'cn tower', 'space needle'];
+            const smallKeywords = ['house', 'home', 'residence', 'villa', 'shop', 'office', 'store', 'cabin', 'cottage'];
+
+            if (hugeKeywords.some(kw => query.includes(kw))) {
+                height = 320; // Eiffel Tower, CN Tower, Burj Khalifa scale
+            } else if (tallKeywords.some(kw => query.includes(kw))) {
+                height = 120; // Skyscraper, Monument scale
+            } else if (smallKeywords.some(kw => query.includes(kw))) {
+                height = 12;  // Small residential house
+            }
+            
+            // Query actual loaded Cesium 3D Tiles / Google photorealistic 3D Tiles scene height if possible
+            try {
+                if (previewViewer && previewViewer.scene) {
+                    const position = Cesium.Cartographic.fromDegrees(lon, lat);
+                    const sampledHeight = previewViewer.scene.sampleHeight(position);
+                    const terrainHeight = previewViewer.scene.globe.getHeight(position) || 0;
+                    
+                    if (sampledHeight !== undefined && sampledHeight > terrainHeight) {
+                        const calculatedHeight = sampledHeight - terrainHeight;
+                        if (calculatedHeight > 2) {
+                            height = calculatedHeight;
+                            console.log("Sampled actual building height in preview: " + height + "m");
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn("Failed to sample height from tileset, using heuristic.", e);
+            }
+            
+            return height;
+        }
+
+        // Reposition camera in preview using sliders values
+        function updatePreviewCamera() {
+            if (!previewViewer || !marker) return;
+            
+            // Use clicked coordinates if available, otherwise fallback to marker + AI offset
+            const lat = stagedClickedLat !== null ? stagedClickedLat : (marker.getLatLng().lat + stagedLatOffset);
+            const lon = stagedClickedLon !== null ? stagedClickedLon : (marker.getLatLng().lng + stagedLonOffset);
+            
+            // Get slider values
+            const range = parseInt(pRangeSlider.value);
+            const pitchDeg = parseInt(pPitchSlider.value);
+            const headingDeg = parseInt(pHeadingSlider.value);
+            
+            // Update labels text
+            pRangeVal.innerText = range + 'm';
+            pPitchVal.innerText = pitchDeg + '°';
+            pHeadingVal.innerText = headingDeg + '°';
+            
+            const targetCenter = Cesium.Cartesian3.fromDegrees(lon, lat, stagedTargetAltitude);
+            const heading = Cesium.Math.toRadians(headingDeg);
+            const pitch = Cesium.Math.toRadians(pitchDeg);
+
+            previewViewer.camera.lookAt(targetCenter, new Cesium.HeadingPitchRange(heading, pitch, range));
+        }
+
+        // Draw a glowing pinpoint marker entity at the clicked target location inside the 3D scene
+        function updateStagingMarkerIn3D(position) {
+            if (!previewViewer) return;
+            
+            if (targetPinEntity) {
+                previewViewer.entities.remove(targetPinEntity);
+            }
+            
+            targetPinEntity = previewViewer.entities.add({
+                position: position,
+                point: {
+                    pixelSize: 12,
+                    color: Cesium.Color.fromCssColorString('#ff007f'),
+                    outlineColor: Cesium.Color.WHITE,
+                    outlineWidth: 3,
+                    disableDepthTestDistance: Number.POSITIVE_INFINITY // draw on top of building geometry
+                },
+                label: {
+                    text: "🔒 TARGET LOCK",
+                    font: "bold 11px Outfit, sans-serif",
+                    style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                    outlineColor: Cesium.Color.BLACK,
+                    outlineWidth: 4,
+                    verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                    pixelOffset: new Cesium.Cartesian2(0, -15),
+                    disableDepthTestDistance: Number.POSITIVE_INFINITY
+                }
+            });
+        }
+
+        // Camera lookAt re-centering while preserving current staging sliders
+        function updatePreviewCameraToPoint(lat, lon, targetAlt) {
+            if (!previewViewer) return;
+            
+            const range = parseInt(pRangeSlider.value);
+            const pitch = Cesium.Math.toRadians(parseInt(pPitchSlider.value));
+            const heading = Cesium.Math.toRadians(parseInt(pHeadingSlider.value));
+            
+            const targetCenter = Cesium.Cartesian3.fromDegrees(lon, lat, targetAlt);
+            previewViewer.camera.lookAt(targetCenter, new Cesium.HeadingPitchRange(heading, pitch, range));
+        }
+
+        // Draw and update dynamic polygon (area) or polyline (path) inside the Cesium scene
+        function update3DShapes() {
+            if (!previewViewer || stagedDrawingPoints.length < 2) return;
+            
+            // Clear previous line/polygon entities
+            if (activeDynamicShapeEntity) {
+                previewViewer.entities.remove(activeDynamicShapeEntity);
+                activeDynamicShapeEntity = null;
+            }
+            
+            if (previewTargetMode === 'area') {
+                // Draw a dynamic 3D extruded polygon shape (connecting vertices and extruding upwards)
+                activeDynamicShapeEntity = previewViewer.entities.add({
+                    polygon: {
+                        hierarchy: new Cesium.CallbackProperty(() => {
+                            return new Cesium.PolygonHierarchy(stagedDrawingPoints);
+                        }, false),
+                        material: Cesium.Color.fromCssColorString('rgba(0, 242, 254, 0.35)'),
+                        outline: true,
+                        outlineColor: Cesium.Color.fromCssColorString('#00f2fe'),
+                        outlineWidth: 2.5,
+                        perPositionHeight: true, // base follows exact vertices altitudes (roofs/ground)
+                        extrudedHeight: new Cesium.CallbackProperty(() => {
+                            // Extrusion top is calculated relative to average vertices base heights + slider value
+                            const heights = stagedVerticesList.map(v => v.height);
+                            const avgHeight = heights.length > 0 ? (heights.reduce((a, b) => a + b, 0) / heights.length) : 0;
+                            return avgHeight + parseFloat(stagedExtrusionHeight);
+                        }, false)
+                    }
+                });
+            } else if (previewTargetMode === 'path') {
+                // Draw a polyline connecting waypoints
+                activeDynamicShapeEntity = previewViewer.entities.add({
+                    polyline: {
+                        positions: new Cesium.CallbackProperty(() => stagedDrawingPoints, false),
+                        width: 4,
+                        material: new Cesium.PolylineDashMaterialProperty({
+                            color: Cesium.Color.fromCssColorString('#ff007f')
+                        }),
+                        clampToGround: false
+                    }
+                });
+            }
+        }
+
+        // Clear all active custom drawings (vertices, polygons, polylines)
+        function clearDrawing() {
+            if (previewViewer) {
+                // Remove vertex pins
+                drawingEntitiesList.forEach(entity => {
+                    previewViewer.entities.remove(entity);
+                });
+                
+                // Remove boundary shape
+                if (activeDynamicShapeEntity) {
+                    previewViewer.entities.remove(activeDynamicShapeEntity);
+                    activeDynamicShapeEntity = null;
+                }
+            }
+            
+            stagedDrawingPoints = [];
+            stagedVerticesList = [];
+            drawingEntitiesList = [];
+            selectVertex(null);
+            
+            const statusText = document.getElementById('drawing-status-text');
+            if (statusText) {
+                statusText.innerText = "Vertices: 0";
+            }
+        }
+
+        // Highlight a selected vertex entity and display its height altitude controls
+        function selectVertex(index) {
+            activeVertexIndex = index;
+            
+            if (!previewViewer) return;
+
+            // Highlight the selected vertex pin entity in the 3D scene
+            for (let i = 0; i < drawingEntitiesList.length; i++) {
+                const entity = drawingEntitiesList[i];
+                if (i === index) {
+                    // Highlight selected (bright yellow, larger size)
+                    entity.point.color = Cesium.Color.YELLOW;
+                    entity.point.pixelSize = 14;
+                } else {
+                    // Restore original color
+                    const originalColor = (previewTargetMode === 'area') ? '#00f2fe' : '#ff007f';
+                    entity.point.color = Cesium.Color.fromCssColorString(originalColor);
+                    entity.point.pixelSize = 10;
+                }
+            }
+
+            if (index !== null && index < stagedVerticesList.length) {
+                const vertex = stagedVerticesList[index];
+                
+                // Show altitude adjust slider
+                pVertexAltGroup.style.display = 'block';
+                pVertexAltSlider.value = Math.round(vertex.height);
+                pVertexAltVal.innerText = Math.round(vertex.height) + 'm';
+            } else {
+                pVertexAltGroup.style.display = 'none';
+            }
+        }
+
+        // Keydown listener for quick height adjustments using W/S or Up/Down arrows
+        function handlePreviewKeyDown(e) {
+            if (activeVertexIndex === null) return;
+            
+            let delta = 0;
+            if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+                delta = 5;
+            } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+                delta = -5;
+            }
+            
+            if (delta !== 0) {
+                e.preventDefault();
+                const currentVal = parseInt(pVertexAltSlider.value);
+                const newVal = Math.max(0, Math.min(500, currentVal + delta));
+                
+                pVertexAltSlider.value = newVal;
+                pVertexAltSlider.dispatchEvent(new Event('input')); // trigger real-time updates
+            }
+        }
+
+        // Set the active targeting mode and update HUD interface state
+        function setTargetMode(mode) {
+            previewTargetMode = mode;
+            clearDrawing();
+
+            // Reset single building target lock pin if changing modes
+            stagedClickedLat = null;
+            stagedClickedLon = null;
+            if (previewViewer && targetPinEntity) {
+                previewViewer.entities.remove(targetPinEntity);
+                targetPinEntity = null;
+            }
+
+            // Update tab button styles
+            const tabs = ['single', 'area', 'path'];
+            tabs.forEach(t => {
+                const btn = document.getElementById(`mode-${t}-btn`);
+                if (btn) {
+                    if (t === mode) {
+                        btn.classList.add('active');
+                        btn.style.background = 'var(--accent-cyan)';
+                        btn.style.color = '#060913';
+                    } else {
+                        btn.classList.remove('active');
+                        btn.style.background = 'transparent';
+                        btn.style.color = '#fff';
+                    }
+                }
+            });
+
+            // Toggle drawing controls display
+            const drawingControlsRow = document.getElementById('drawing-controls-row');
+            if (drawingControlsRow) {
+                drawingControlsRow.style.display = (mode === 'single') ? 'none' : 'flex';
+            }
+
+            // Toggle Extrusion height controls (only shown in Area/3D Object mode)
+            pAreaExtrusionGroup.style.display = (mode === 'area') ? 'block' : 'none';
+
+            // Update instructions text based on mode
+            const promptText = document.getElementById('preview-prompt-text');
+            if (promptText) {
+                if (mode === 'single') {
+                    promptText.innerHTML = `📌 <strong>Single Building Mode:</strong> Click any building roof or point on the 3D map to lock the camera target center directly onto it.`;
+                } else if (mode === 'area') {
+                    promptText.innerHTML = `📐 <strong>3D Object/Area Mode:</strong> Click 3 or more points on rooftops to define a boundary. Adjust the **Extrusion Height** below to lift it into a 3D volumetric prism enclosing target structures.`;
+                } else if (mode === 'path') {
+                    promptText.innerHTML = `📍 <strong>3D Waypoint Path Mode:</strong> Click multiple points in sequence to define a flight path. Select waypoints directly in 3D to edit their individual altitudes vertically.`;
+                }
+            }
+        }
+
+        // Helper to perform HTTP fetch with a custom timeout limit
+        async function fetchWithTimeout(resource, options = {}) {
+            const { timeout = 5000 } = options; // Default 5 second timeout
+            
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), timeout);
+            
+            try {
+                const response = await fetch(resource, {
+                    ...options,
+                    signal: controller.signal
+                });
+                clearTimeout(id);
+                return response;
+            } catch (error) {
+                clearTimeout(id);
+                throw error;
+            }
+        }
+
+        // Asynchronous call to Gemini API or OpenRouter to retrieve optimized target framing coordinates and angles
+        async function callGeminiForCameraAngle(locationName, lat, lon) {
+            const prompt = `You are an expert drone camera director.
+We want to capture a cinematic 360-degree drone orbit video of a target location.
+Target Location Name: "${locationName}"
+Target Coordinate: Latitude ${lat}, Longitude ${lon}
+
+Analyze this location's size, height, scale, and typical layout. Return a JSON object with these exact keys:
+1. "lat_offset": Float. Small latitude adjustment to center perfectly on the main landmark/building (usually between -0.003 and 0.003).
+2. "lon_offset": Float. Small longitude adjustment to center perfectly on the main landmark/building (usually between -0.003 and 0.003).
+3. "range": Float. Camera distance in meters to capture the full landmark cleanly without clipping (e.g. 750 for Eiffel Tower, 300 for Colosseum, 120 for small house).
+4. "pitch": Float. Best look-down angle in degrees (usually between -40 and -15).
+5. "heading": Float. Starting heading in degrees (0 to 360) for the most iconic first frame.
+6. "target_altitude": Float. Vertical focus point of the camera in meters above ground level (e.g. 150 for Eiffel Tower, 25 for Colosseum, 5 for house) so the camera doesn't point at the ground.
+7. "feedback": String. A very brief 1-sentence reasoning for these choices.
+
+Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
+
+            // 1. Try n8n camera staging webhook first
+            if (typeof N8N_STAGING_URL !== 'undefined') {
+                try {
+                    console.log("Attempting camera staging calculation via n8n webhook...");
+                    const response = await fetchWithTimeout(N8N_STAGING_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            location: locationName,
+                            lat: lat,
+                            lon: lon
+                        }),
+                        timeout: 12000 // 12 seconds timeout for n8n + Gemini
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        console.log("Staging configuration received successfully from n8n:", data);
+                        return data;
+                    }
+                    console.warn(`n8n webhook staging failed (status: ${response.status}), falling back to direct API...`);
+                } catch (e) {
+                    console.warn("n8n webhook staging connection failed, checking direct API fallbacks...", e);
+                }
+            }
+
+            // A. Try Direct Google Gemini API first
+            if (typeof CONFIG !== 'undefined' && CONFIG.GEMINI_API_KEY) {
+                try {
+                    console.log("Attempting camera staging calculation via direct Gemini API...");
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${CONFIG.GEMINI_API_KEY}`;
+                    const response = await fetchWithTimeout(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            contents: [{
+                                parts: [{
+                                    text: prompt
+                                }]
+                            }],
+                            generationConfig: {
+                                responseMimeType: "application/json"
+                            }
+                        }),
+                        timeout: 5000 // 5 seconds strict timeout
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.candidates && data.candidates.length > 0) {
+                            let text = data.candidates[0].content.parts[0].text;
+                            text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+                            return JSON.parse(text);
+                        }
+                    }
+                    console.warn(`Direct Gemini API failed, trying OpenRouter fallback...`);
+                } catch (e) {
+                    console.warn("Direct Gemini API camera staging failed, checking fallback...", e);
+                }
+            }
+
+            // B. OpenRouter Fallback
+            if (typeof CONFIG !== 'undefined' && CONFIG.OPENROUTER_API_KEY) {
+                try {
+                    console.log("Attempting camera staging calculation via OpenRouter fallback...");
+                    const response = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${CONFIG.OPENROUTER_API_KEY}`
+                        },
+                        body: JSON.stringify({
+                            model: "google/gemini-flash-1.5",
+                            messages: [
+                                { role: "user", content: prompt }
+                            ]
+                        }),
+                        timeout: 5000
+                    });
+
+                    if (response.ok) {
+                        const resData = await response.json();
+                        let text = resData.choices[0].message.content.strip || resData.choices[0].message.content.trim();
+                        text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+                        return JSON.parse(text);
+                    }
+                    throw new Error(`OpenRouter request failed with status: ${response.status}`);
+                } catch (e) {
+                    throw new Error("Staging calculation failed on both direct Gemini and OpenRouter.");
+                }
+            }
+
+            throw new Error("No configured API Key found in config.js (Gemini API Key or OpenRouter API Key required).");
+        }
+
+        async function launchLivePreview() {
+            const lat = parseFloat(latInput.value);
+            const lon = parseFloat(lonInput.value);
+            const userRange = parseInt(altSlider.value);
+            const userPitch = parseInt(pitchSlider.value);
+            
+            // Extract short location name
+            const locationName = addressInput.value.split(',')[0] || 'your selected target location';
+            
+            // Reset AI state variables
+            stagedLatOffset = 0.0;
+            stagedLonOffset = 0.0;
+            stagedTargetAltitude = 15.0;
+
+            // Show the preview panel first (so container expands and has dimensions before Cesium load)
+            previewOverlay.style.display = 'block';
+            
+            // Display loading HUD status for AI call
+            previewPromptText.innerHTML = `<span style="color: var(--accent-cyan); font-weight: bold; animation: pulse 1.5s infinite;">🤖 AI Director is analyzing target landmark, centering building, and determining optimal starting perspective...</span>`;
+            
+            // Disable actions during loading
+            confirmBtn.disabled = true;
+            cancelBtn.disabled = true;
+            confirmBtn.style.opacity = 0.5;
+            cancelBtn.style.opacity = 0.5;
+
+            // Wait for DOM reflow, then initialize Cesium & call AI
+            setTimeout(async () => {
+                Cesium.Ion.defaultAccessToken = defaultIonToken;
+
+                try {
+                    if (!previewViewer) {
+                        previewViewer = new Cesium.Viewer("previewCesiumContainer", {
+                            shouldAnimate: false,
+                            shadows: true,
+                            baseLayerPicker: false,
+                            geocoder: false,
+                            homeButton: false,
+                            infoBox: false,
+                            navigationHelpButton: false,
+                            sceneModePicker: false,
+                            timeline: false,
+                            animation: false,
+                            contextOptions: {
+                                webgl: {
+                                    preserveDrawingBuffer: true
+                                }
+                            }
+                        });
+
+                        previewViewer.scene.globe.enableLighting = true;
+
+                        // Load terrain asynchronously in background
+                        Cesium.createWorldTerrainAsync().then(tp => {
+                            if (previewViewer) previewViewer.terrainProvider = tp;
+                        }).catch(e => {
+                            console.warn("Could not load terrain in preview:", e);
+                        });
+
+                        // Robust Google 3D Tiles / OSM Buildings Loading chain
+                        let googleTilesetLoaded = false;
+                        let tileset;
+
+                        // A. Try loading Google tiles via createGooglePhotorealistic3DTileset helper
+                        try {
+                            tileset = await Cesium.createGooglePhotorealistic3DTileset();
+                            previewViewer.scene.primitives.add(tileset);
+                            previewViewer.scene.globe.show = false; // Hide default ellipsoid to see Google's ground textures
+                            googleTilesetLoaded = true;
+                            console.log("Loaded Google Photorealistic 3D Tiles in preview successfully using helper.");
+                        } catch (e) {
+                            console.warn("createGooglePhotorealistic3DTileset helper failed, trying asset ID 2275207...", e);
+                        }
+
+                        // B. Try loading Google tiles via Asset ID 2275207
+                        if (!googleTilesetLoaded) {
+                            try {
+                                tileset = await Cesium.Cesium3DTileset.fromIonAssetId(2275207);
+                                previewViewer.scene.primitives.add(tileset);
+                                previewViewer.scene.globe.show = false;
+                                googleTilesetLoaded = true;
+                                console.log("Loaded Google Photorealistic 3D Tiles in preview successfully using Asset ID 2275207.");
+                            } catch (e) {
+                                console.warn("Asset ID 2275207 failed, falling back to OSM Buildings...", e);
+                            }
+                        }
+
+                        // C. Fallback to OSM Buildings and OpenStreetMap imagery base layer
+                        if (!googleTilesetLoaded) {
+                            previewViewer.scene.globe.show = true; // Ensure standard globe is visible (prevent black screen!)
+                            
+                            const osmProvider = new Cesium.OpenStreetMapImageryProvider({
+                                url: 'https://tile.openstreetmap.org/'
+                            });
+                            previewViewer.imageryLayers.addImageryProvider(osmProvider);
+
+                            try {
+                                const osmBuildings = await Cesium.Cesium3DTileset.fromIonAssetId(96188);
+                                previewViewer.scene.primitives.add(osmBuildings);
+                                console.log("Loaded OSM Buildings fallback successfully in preview.");
+                            } catch (osmError) {
+                                console.error("OSM Buildings load failed in preview:", osmError);
+                            }
+                        }
+
+                        // Create click handler for targeting specific 3D buildings and custom shapes
+                        previewClickEventHandler = new Cesium.ScreenSpaceEventHandler(previewViewer.scene.canvas);
+                        previewClickEventHandler.setInputAction(function (click) {
+                            // A. Try picking an existing drawn vertex entity for height adjustments
+                            const pickedObject = previewViewer.scene.pick(click.position);
+                            if (Cesium.defined(pickedObject) && pickedObject.id) {
+                                const foundIdx = drawingEntitiesList.indexOf(pickedObject.id);
+                                if (foundIdx !== -1) {
+                                    selectVertex(foundIdx);
+                                    return; // exit early without adding a vertex
+                                }
+                            }
+
+                            let pickedPosition;
+                            
+                            // 1. Try picking 3D tileset position
+                            if (previewViewer.scene.pickPositionSupported) {
+                                pickedPosition = previewViewer.scene.pickPosition(click.position);
+                            }
+                            
+                            // 2. Fallback to globe/ellipsoid picking
+                            if (!Cesium.defined(pickedPosition)) {
+                                const ray = previewViewer.camera.getPickRay(click.position);
+                                pickedPosition = previewViewer.scene.globe.pick(ray, previewViewer.scene);
+                            }
+                            
+                            if (Cesium.defined(pickedPosition)) {
+                                const cartographic = Cesium.Cartographic.fromCartesian(pickedPosition);
+                                const latClick = Cesium.Math.toDegrees(cartographic.latitude);
+                                const lonClick = Cesium.Math.toDegrees(cartographic.longitude);
+                                const heightClick = cartographic.height;
+                                
+                                if (previewTargetMode === 'single') {
+                                    stagedClickedLat = latClick;
+                                    stagedClickedLon = lonClick;
+                                    stagedTargetAltitude = Math.max(5, heightClick);
+                                    
+                                    // Draw visual target lock marker in 3D
+                                    updateStagingMarkerIn3D(pickedPosition);
+                                    
+                                    // Re-center camera on the clicked point
+                                    updatePreviewCameraToPoint(latClick, lonClick, stagedTargetAltitude);
+                                    
+                                    // Update prompt HUD text
+                                    previewPromptText.innerHTML = `🎯 <strong>Custom 3D Target Locked!</strong><br/><span style="font-size: 11px; color: var(--accent-cyan); display: block; margin-top: 5px;">Coords: Lat ${latClick.toFixed(6)}, Lon ${lonClick.toFixed(6)} | Height: ${Math.round(heightClick)}m</span>`;
+                                } else {
+                                    // Area (Polygon) or Path (Waypoints) mode
+                                    stagedDrawingPoints.push(pickedPosition);
+                                    stagedVerticesList.push({
+                                        lat: latClick,
+                                        lon: lonClick,
+                                        height: heightClick
+                                    });
+                                    
+                                    let labelText = "";
+                                    let pinColor = "";
+                                    if (previewTargetMode === 'area') {
+                                        labelText = `P${stagedDrawingPoints.length}`;
+                                        pinColor = '#00f2fe';
+                                    } else {
+                                        labelText = `W${stagedDrawingPoints.length}`;
+                                        pinColor = '#ff007f';
+                                    }
+                                    
+                                    const currentIdx = stagedDrawingPoints.length - 1;
+                                    const vertexEntity = previewViewer.entities.add({
+                                        position: new Cesium.CallbackProperty(() => {
+                                            return stagedDrawingPoints[currentIdx];
+                                        }, false),
+                                        point: {
+                                            pixelSize: 10,
+                                            color: Cesium.Color.fromCssColorString(pinColor),
+                                            outlineColor: Cesium.Color.WHITE,
+                                            outlineWidth: 2,
+                                            disableDepthTestDistance: Number.POSITIVE_INFINITY
+                                        },
+                                        label: {
+                                            text: labelText,
+                                            font: "bold 10px Outfit, sans-serif",
+                                            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                                            outlineColor: Cesium.Color.BLACK,
+                                            outlineWidth: 3,
+                                            verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                                            pixelOffset: new Cesium.Cartesian2(0, -12),
+                                            disableDepthTestDistance: Number.POSITIVE_INFINITY
+                                        }
+                                    });
+                                    
+                                    drawingEntitiesList.push(vertexEntity);
+                                    update3DShapes();
+                                    
+                                    // Automatically select the newly created vertex
+                                    selectVertex(currentIdx);
+
+                                    const statusText = document.getElementById('drawing-status-text');
+                                    if (statusText) {
+                                        statusText.innerText = `Vertices: ${stagedDrawingPoints.length}`;
+                                    }
+                                }
+                            }
+                        }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+                    }
+
+                    // 🤖 Call Gemini REST API for expert camera framing values
+                    let optimalRange = 350;
+                    let optimalPitch = -25;
+                    let optimalHeading = 45;
+                    let feedbackText = "";
+                    let aiSucceeded = false;
+
+                    try {
+                        const aiResult = await callGeminiForCameraAngle(addressInput.value, lat, lon);
+                        if (aiResult) {
+                            stagedLatOffset = aiResult.lat_offset || 0.0;
+                            stagedLonOffset = aiResult.lon_offset || 0.0;
+                            stagedTargetAltitude = aiResult.target_altitude || 15.0;
+                            optimalRange = Math.round(aiResult.range || 350);
+                            optimalPitch = Math.round(aiResult.pitch || -25);
+                            optimalHeading = Math.round(aiResult.heading || 45);
+                            feedbackText = aiResult.feedback || "Camera angle optimized by AI.";
+                            aiSucceeded = true;
+                            console.log("AI framing suggestion applied:", aiResult);
+                        }
+                    } catch (e) {
+                        console.warn("AI framing failed, using mathematical fallback:", e);
+                    }
+
+                    // Fallback to mathematical calculation if AI fails or isn't configured
+                    if (!aiSucceeded) {
+                        const buildingHeight = estimateBuildingHeight(lat, lon, addressInput.value);
+                        stagedTargetAltitude = buildingHeight / 2;
+                        optimalRange = Math.max(150, Math.round(buildingHeight * 2.5));
+                        optimalPitch = buildingHeight > 100 ? -28 : -20;
+                        optimalHeading = 45;
+                        feedbackText = `Math Fallback: Auto-detected building height is ${Math.round(buildingHeight)}m.`;
+                    }
+
+                    // Sync values to the preview sliders immediately
+                    pRangeSlider.value = optimalRange;
+                    pPitchSlider.value = optimalPitch;
+                    pHeadingSlider.value = optimalHeading;
+
+                    // Update UI HUD readouts
+                    pRangeVal.innerText = optimalRange + 'm';
+                    pPitchVal.innerText = optimalPitch + '°';
+                    pHeadingVal.innerText = optimalHeading + '°';
+
+                    // Update prompt label text with AI feedback
+                    if (aiSucceeded) {
+                        previewPromptText.innerHTML = `🤖 <strong>AI Director recommendation:</strong> "${feedbackText}"<br/><span style="font-size: 11px; color: var(--text-secondary); margin-top: 5px; display: block;">Offsets applied: Lat ${stagedLatOffset.toFixed(6)}, Lon ${stagedLonOffset.toFixed(6)} | Alt Center: ${Math.round(stagedTargetAltitude)}m</span>`;
+                    } else {
+                        previewPromptText.innerHTML = `⚠️ <strong>Mathematical Fallback:</strong> "${feedbackText}"<br/><span style="font-size: 11px; color: var(--text-secondary); margin-top: 5px; display: block;">Alt Center: ${Math.round(stagedTargetAltitude)}m</span>`;
+                    }
+
+                    console.log("Enabling buttons now. optimalRange=" + optimalRange + ", optimalPitch=" + optimalPitch + ", optimalHeading=" + optimalHeading);
+                    // Re-enable actions
+                    confirmBtn.disabled = false;
+                    cancelBtn.disabled = false;
+                    confirmBtn.style.opacity = 1.0;
+                    cancelBtn.style.opacity = 1.0;
+
+                    // Force Cesium engine canvas resize
+                    previewViewer.resize();
+                    
+                    // Center and position preview camera
+                    updatePreviewCamera();
+                    
+                    // Register key listener for vertex height adjustments
+                    document.addEventListener('keydown', handlePreviewKeyDown);
+
+                } catch (error) {
+                    console.error("Cesium preview initialization failed:", error);
+                    // Re-enable actions in case of crash
+                    confirmBtn.disabled = false;
+                    cancelBtn.disabled = false;
+                    confirmBtn.style.opacity = 1.0;
+                    cancelBtn.style.opacity = 1.0;
+                }
+            }, 150);
+        }
+
+        // Bind events to the preview sliders to update camera real-time
+        pRangeSlider.addEventListener('input', updatePreviewCamera);
+        pPitchSlider.addEventListener('input', updatePreviewCamera);
+        pHeadingSlider.addEventListener('input', updatePreviewCamera);
+
+        // Bind height adjustments sliders events
+        pVertexAltSlider.addEventListener('input', () => {
+            if (activeVertexIndex === null || activeVertexIndex >= stagedVerticesList.length) return;
+            
+            const newHeight = parseFloat(pVertexAltSlider.value);
+            pVertexAltVal.innerText = Math.round(newHeight) + 'm';
+            
+            // Update vertex height data
+            const vertex = stagedVerticesList[activeVertexIndex];
+            vertex.height = newHeight;
+            
+            // Update Cartesian3 point in stagedDrawingPoints list
+            const updatedCartesian = Cesium.Cartesian3.fromDegrees(vertex.lon, vertex.lat, newHeight);
+            stagedDrawingPoints[activeVertexIndex] = updatedCartesian;
+        });
+
+        pAreaExtrusionSlider.addEventListener('input', () => {
+            stagedExtrusionHeight = parseFloat(pAreaExtrusionSlider.value);
+            pAreaExtrusionVal.innerText = Math.round(stagedExtrusionHeight) + 'm';
+        });
+
+        // Stop preview and clean up memory
+        function closeLivePreview() {
+            previewOverlay.style.display = 'none';
+            stagedClickedLat = null;
+            stagedClickedLon = null;
+            clearDrawing();
+            document.removeEventListener('keydown', handlePreviewKeyDown);
+
+            // Hide altitude and extrusion groups
+            pVertexAltGroup.style.display = 'none';
+            pAreaExtrusionGroup.style.display = 'none';
+            
+            if (previewClickEventHandler) {
+                previewClickEventHandler.destroy();
+                previewClickEventHandler = null;
+            }
+            
+            if (previewViewer) {
+                if (targetPinEntity) {
+                    previewViewer.entities.remove(targetPinEntity);
+                    targetPinEntity = null;
+                }
+                previewViewer.destroy();
+                previewViewer = null;
+            }
+        }
+
+        // Step 1: Open Live Preview instead of posting directly
+        launchBtn.addEventListener('click', () => {
+            launchLivePreview();
+            // Default to single target mode on preview launch
+            setTargetMode('single');
+        });
+
+        // Bind Mode Tabs click listeners
+        document.getElementById('mode-single-btn').addEventListener('click', () => setTargetMode('single'));
+        document.getElementById('mode-area-btn').addEventListener('click', () => setTargetMode('area'));
+        document.getElementById('mode-path-btn').addEventListener('click', () => setTargetMode('path'));
+
+        // Bind Clear Drawing click listener
+        document.getElementById('clear-drawing-btn').addEventListener('click', clearDrawing);
+
+        // Step 2: If user rejects view
+        cancelBtn.addEventListener('click', () => {
+            closeLivePreview();
+        });
+
+        // Step 3: If user confirms building
+        confirmBtn.addEventListener('click', async () => {
+            // Validate vertices for drawing modes
+            if (previewTargetMode === 'area' && stagedVerticesList.length < 3) {
+                alert("Please click on the 3D map to select at least 3 vertices to define a boundary area.");
+                return;
+            }
+            if (previewTargetMode === 'path' && stagedVerticesList.length < 2) {
+                alert("Please click on the 3D map to select at least 2 waypoints to define a flight path.");
+                return;
+            }
+
+            // Get visually-adjusted preview telemetry values
+            const rangeVal = parseInt(pRangeSlider.value);
+            const pitchVal = parseInt(pPitchSlider.value);
+            const headingVal = parseInt(pHeadingSlider.value);
+
+            // Apply visually-previewed AI coordinate offsets
+            const finalLat = parseFloat(latInput.value) + stagedLatOffset;
+            const finalLon = parseFloat(lonInput.value) + stagedLonOffset;
+
+            // Capture actual live camera position & orientation from the Cesium 3D scene
+            let cameraParams = {};
+            if (previewViewer) {
+                try {
+                    const cam = previewViewer.camera;
+                    const carto = Cesium.Cartographic.fromCartesian(cam.position);
+                    cameraParams = {
+                        camera_lat: Cesium.Math.toDegrees(carto.latitude),
+                        camera_lon: Cesium.Math.toDegrees(carto.longitude),
+                        camera_height: carto.height,
+                        camera_heading: Cesium.Math.toDegrees(cam.heading),
+                        camera_pitch: Cesium.Math.toDegrees(cam.pitch),
+                        camera_roll: Cesium.Math.toDegrees(cam.roll)
+                    };
+                } catch (e) {
+                    console.warn("Could not extract camera parameters:", e);
+                }
+            }
+
+            const payload = {
+                location: addressInput.value.trim() || 'Selected Coordinates',
+                mode: previewTargetMode,
+                orbit: orbitSwitch.checked,
+                range: rangeVal,
+                pitch: pitchVal,
+                heading: headingVal, // Send the visually chosen starting camera angle!
+                frames: orbitSwitch.checked ? parseInt(framesSlider.value) : 1
+            };
+
+            // Set coordinates and offsets based on selected targeting mode
+            if (previewTargetMode === 'single') {
+                payload.lat = stagedClickedLat !== null ? stagedClickedLat : finalLat;
+                payload.lon = stagedClickedLon !== null ? stagedClickedLon : finalLon;
+                payload.target_altitude = stagedTargetAltitude;
+                payload.lat_offset = stagedLatOffset;
+                payload.lon_offset = stagedLonOffset;
+                
+                // Merge direct viewer camera coordinates & orientation values
+                Object.assign(payload, cameraParams);
+                console.log("Captured camera position & orientation from 3D scene:", cameraParams);
+            } else if (previewTargetMode === 'area') {
+                payload.polygon = stagedVerticesList;
+                payload.extruded_height = stagedExtrusionHeight;
+            } else if (previewTargetMode === 'path') {
+                payload.path = stagedVerticesList;
+                
+                // Open viewer.html in a new tab with the path payload (simulation)
+                const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(payload.location)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&path=${encodeURIComponent(JSON.stringify(stagedVerticesList))}`;
+                window.open(pathUrl, '_blank');
+            }
+
+            // Calculate 3D height metrics for Single mode
+            if (previewViewer && previewTargetMode === 'single') {
+                try {
+                    const targetCarto = Cesium.Cartographic.fromDegrees(payload.lon, payload.lat);
+                    const surfaceHeight = previewViewer.scene.sampleHeight(targetCarto);
+                    const terrainHeight = previewViewer.scene.globe.getHeight(targetCarto) || 0;
+                    if (surfaceHeight !== undefined && surfaceHeight > terrainHeight) {
+                        payload.building_height = Math.max(0, surfaceHeight - terrainHeight);
+                        payload.surface_elevation = surfaceHeight;
+                        payload.terrain_elevation = terrainHeight;
+                        console.log("Calculated building height client-side:", payload.building_height, "m");
+                    }
+                } catch (e) {
+                    console.warn("Could not calculate building height metrics:", e);
+                }
+            }
+
+            // Capture staging screenshot before closing the preview loop
+            if (previewViewer) {
+                try {
+                    previewViewer.scene.render();
+                    const canvas = previewViewer.scene.canvas;
+                    
+                    // Downscale to 800x450 and compress as 60% quality JPEG to keep payload small (< 50KB)
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = 800;
+                    tempCanvas.height = 450;
+                    const ctx = tempCanvas.getContext('2d');
+                    if (ctx) {
+                        ctx.drawImage(canvas, 0, 0, tempCanvas.width, tempCanvas.height);
+                        payload.staging_screenshot = tempCanvas.toDataURL("image/jpeg", 0.60);
+                        console.log("Captured compressed staging screenshot (800x450 @ 60% JPEG)");
+                    } else {
+                        payload.staging_screenshot = canvas.toDataURL("image/jpeg", 0.60);
+                    }
+                    console.log("Captured browser staging screenshot successfully");
+                } catch (e) {
+                    console.warn("Failed to capture browser staging screenshot:", e);
+                }
+            }
+
+            // Determine target webhook URL dynamically based on the active mode
+            let targetUrl = N8N_PATH_URL;
+            if (previewTargetMode === 'single') {
+                targetUrl = N8N_SINGLE_URL;
+            } else if (previewTargetMode === 'area') {
+                targetUrl = N8N_AREA_URL;
+            }
+
+            console.log("Dispatching mission payload:", payload, "to URL:", targetUrl);
+
+            // Close the preview loop first
+            closeLivePreview();
+
+            // Clone payload and truncate screenshot data for clean UI layout log display
+            const displayPayload = { ...payload };
+            if (displayPayload.staging_screenshot) {
+                displayPayload.staging_screenshot = displayPayload.staging_screenshot.substring(0, 80) + "... [BASE64 IMAGE TRUNCATED FOR CLEAN LOGS]";
+            }
+
+            // Display loading overlay
+            showOverlay(`
+                <div class="loader-ring"></div>
+                <div class="status-title">Dispatching Drone</div>
+                <div class="status-message">Connecting to mission control, mapping area coordinates, and preparing flight plans...</div>
+                <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 10px; word-break: break-all;">Target Webhook: ${targetUrl}</div>
+                <pre>${JSON.stringify(displayPayload, null, 2)}</pre>
+            `);
+
+            try {
+                const response = await fetch(targetUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    if (data.status === "success") {
+                        // Create a blob URL to download the payload JSON
+                        const payloadBlob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+                        const payloadUrl = URL.createObjectURL(payloadBlob);
+                        
+                        showOverlay(`
+                            <div class="success-icon" style="background: var(--accent-cyan); color: #060913; width: 60px; height: 60px; font-size: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%; margin: 0 auto 20px;">✓</div>
+                            <div class="status-title" style="color: var(--accent-cyan); font-size: 24px; font-weight: 700; margin-bottom: 12px;">Mission Accomplished!</div>
+                            <div class="status-message" style="margin-bottom: 20px; line-height: 1.6; color: #cbd5e1; font-size: 14px;">
+                                The virtual drone has completed its flight mission over <strong>${data.location}</strong> (${data.mode.toUpperCase()} mode).
+                                <br><br>
+                                🎥 <strong>Video Compiled:</strong> <br>
+                                <span style="font-family: monospace; font-size: 11px; background: rgba(30,41,59,0.5); padding: 6px 10px; border-radius: 4px; display: inline-block; margin-top: 5px; word-break: break-all; border: 1px solid rgba(255,255,255,0.1);">${data.video}</span>
+                            </div>
+                            <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 15px;">
+                                <a href="file:///${data.video.replace(/\\/g, '/')}" target="_blank" class="close-btn" style="text-decoration: none; display: inline-block; background: var(--accent-cyan); color: #060913; font-weight: 600; padding: 10px 20px; border-radius: 6px; border: none; cursor: pointer; transition: all 0.2s; font-size: 13px;">Open Video</a>
+                                <a href="${payloadUrl}" download="drone_mission_payload.json" class="close-btn" style="text-decoration: none; display: inline-block; background: rgba(255,255,255,0.1); color: #fff; font-weight: 600; padding: 10px 20px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); cursor: pointer; transition: all 0.2s; font-size: 13px;">Download Payload</a>
+                            </div>
+                            <button class="close-btn" style="background: transparent; color: #94a3b8; border: none; font-size: 13px; text-decoration: underline; cursor: pointer;" onclick="hideOverlay()">Return to Control Station</button>
+                        `);
+                    } else {
+                        // Backend returned custom error
+                        showOverlay(`
+                            <div class="error-icon" style="background: #ef4444; color: #fff; width: 60px; height: 60px; font-size: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%; margin: 0 auto 20px;">✗</div>
+                            <div class="status-title" style="color: #ef4444; font-size: 24px; font-weight: 700; margin-bottom: 12px;">Mission Execution Error</div>
+                            <div class="status-message" style="margin-bottom: 15px; color: #cbd5e1; font-size: 14px;">
+                                Flight failed during the <strong>${data.stage}</strong> stage. See the error log details below:
+                            </div>
+                            <div style="text-align: left; max-height: 200px; overflow-y: auto; background: rgba(15, 23, 42, 0.8); padding: 12px; border-radius: 6px; border: 1px solid rgba(239, 68, 68, 0.3); margin-bottom: 20px; font-family: monospace; font-size: 11px; white-space: pre-wrap; color: #fca5a5;">${data.stderr || data.stdout}</div>
+                            <button class="close-btn" style="background: #ef4444; color: #fff; font-weight: 600; padding: 10px 20px; border-radius: 6px; border: none; cursor: pointer; transition: all 0.2s;" onclick="hideOverlay()">Return to Station</button>
+                        `);
+                    }
+                } else {
+                    if (previewTargetMode === 'path') {
+                        showOverlay(`
+                            <div class="success-icon" style="background: var(--accent-cyan); color: #060913; width: 60px; height: 60px; font-size: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%; margin: 0 auto 20px;">✓</div>
+                            <div class="status-title" style="color: var(--accent-cyan); font-size: 24px; font-weight: 700; margin-bottom: 12px;">Simulation Active</div>
+                            <div class="status-message" style="margin-bottom: 20px; line-height: 1.6; color: #cbd5e1; font-size: 14px;">
+                                The drone path flight simulation has been opened in a new tab!
+                                <br><br>
+                                <span style="color: #fca5a5; font-size: 12px;">⚠️ Note: n8n server responded with status ${response.status}, but your local browser simulation is running successfully.</span>
+                            </div>
+                            <button class="close-btn" style="background: transparent; color: #94a3b8; border: none; font-size: 13px; text-decoration: underline; cursor: pointer;" onclick="hideOverlay()">Return to Station</button>
+                        `);
+                    } else {
+                        showOverlay(`
+                            <div class="error-icon" style="background: #ef4444; color: #fff; width: 60px; height: 60px; font-size: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%; margin: 0 auto 20px;">✗</div>
+                            <div class="status-title" style="color: #ef4444; font-size: 24px; font-weight: 700; margin-bottom: 12px;">Dispatch Failed</div>
+                            <div class="status-message" style="margin-bottom: 20px; color: #cbd5e1; font-size: 14px;">n8n server responded with status ${response.status}. Please make sure your n8n webhook workflow is active and listening.</div>
+                            <button class="close-btn" style="background: #ef4444; color: #fff; font-weight: 600; padding: 10px 20px; border-radius: 6px; border: none; cursor: pointer; transition: all 0.2s;" onclick="hideOverlay()">Dismiss</button>
+                        `);
+                    }
+                }
+            } catch (error) {
+                if (previewTargetMode === 'path') {
+                    showOverlay(`
+                        <div class="success-icon" style="background: var(--accent-cyan); color: #060913; width: 60px; height: 60px; font-size: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%; margin: 0 auto 20px;">✓</div>
+                        <div class="status-title" style="color: var(--accent-cyan); font-size: 24px; font-weight: 700; margin-bottom: 12px;">Simulation Active</div>
+                        <div class="status-message" style="margin-bottom: 20px; line-height: 1.6; color: #cbd5e1; font-size: 14px;">
+                            The drone path flight simulation has been opened in a new tab!
+                            <br><br>
+                            <span style="color: #fca5a5; font-size: 12px;">⚠️ Note: Failed to connect to n8n webhook tunnel, but your local browser simulation is running successfully.</span>
+                        </div>
+                        <button class="close-btn" style="background: transparent; color: #94a3b8; border: none; font-size: 13px; text-decoration: underline; cursor: pointer;" onclick="hideOverlay()">Return to Station</button>
+                    `);
+                } else {
+                    showOverlay(`
+                        <div class="error-icon" style="background: #ef4444; color: #fff; width: 60px; height: 60px; font-size: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%; margin: 0 auto 20px;">✗</div>
+                        <div class="status-title" style="color: #ef4444; font-size: 24px; font-weight: 700; margin-bottom: 12px;">Connection Error</div>
+                        <div class="status-message" style="margin-bottom: 20px; color: #cbd5e1; font-size: 14px;">Failed to connect to the n8n webhook server. Ensure the webhook tunnel URL is active and your local <strong>drone_server.py</strong> is running on port 8765.</div>
+                        <button class="close-btn" style="background: #ef4444; color: #fff; font-weight: 600; padding: 10px 20px; border-radius: 6px; border: none; cursor: pointer; transition: all 0.2s;" onclick="hideOverlay()">Dismiss</button>
+                    `);
+                }
+            }
+        });
+
+        // Initialize map on DOM load
+        window.addEventListener('DOMContentLoaded', initMap);
+    </script>
+</body>
+</html>
