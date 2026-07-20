@@ -1922,7 +1922,7 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
             if (previewViewer) {
                 try {
                     const cam = previewViewer.camera;
-                    const carto = Cesium.Cartographic.fromCartesian(cam.position);
+                    const carto = Cesium.Cartographic.fromCartesian(cam.positionWC);
                     cameraParams = {
                         camera_lat: Cesium.Math.toDegrees(carto.latitude),
                         camera_lon: Cesium.Math.toDegrees(carto.longitude),
