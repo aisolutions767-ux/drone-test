@@ -1,0 +1,112 @@
+{
+  "name": "pin",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "86f10356-6bfb-4f34-b31a-60dc4499c4ff",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "fb2136dc-04c8-429a-8569-8f709b29e653",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        250,
+        250
+      ],
+      "webhookId": "86f10356-6bfb-4f34-b31a-60dc4499c4ff"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://drone-test-production-c060.up.railway.app/screenshot",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"location\": \"{{ $json.body.location }}\",\n  \"mode\": \"single\",\n  \"lat\": {{ $json.body.lat }},\n  \"lon\": {{ $json.body.lon }},\n  \"range\": {{ $json.body.range }},\n  \"pitch\": {{ $json.body.pitch }},\n  \"heading\": {{ $json.body.heading }},\n  \"camera_lat\": {{ $json.body.camera_lat || 'null' }},\n  \"camera_lon\": {{ $json.body.camera_lon || 'null' }},\n  \"camera_height\": {{ $json.body.camera_height || 'null' }},\n  \"camera_heading\": {{ $json.body.camera_heading || 'null' }},\n  \"camera_pitch\": {{ $json.body.camera_pitch || 'null' }},\n  \"camera_roll\": {{ $json.body.camera_roll || 'null' }},\n  \"building_height\": {{ $json.body.building_height || 'null' }},\n  \"surface_elevation\": {{ $json.body.surface_elevation || 'null' }},\n  \"terrain_elevation\": {{ $json.body.terrain_elevation || 'null' }},\n  \"staging_screenshot\": \"{{ $json.body.staging_screenshot || '' }}\"\n}",
+        "options": {}
+      },
+      "id": "e0e2cf77-08b2-4d1e-bd19-a1b7e091e0a2",
+      "name": "AI Screenshot Review",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        450,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://drone-test-production-c060.up.railway.app/render",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"location\": \"{{ $node[\"Webhook\"].json.body.location }}\",\n  \"mode\": \"single\",\n  \"lat\": {{ $json.approved_params.lat }},\n  \"lon\": {{ $json.approved_params.lon }},\n  \"range\": {{ $json.approved_params.range }},\n  \"pitch\": {{ $json.approved_params.pitch }},\n  \"heading\": {{ $json.approved_params.heading }},\n  \"frames\": {{ $node[\"Webhook\"].json.body.frames }}\n}",
+        "options": {}
+      },
+      "id": "a9042b45-132d-45db-9c36-7c09d57a9fe1",
+      "name": "Render Orbit Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        650,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"success\",\n  \"message\": \"Drone mission complete\",\n  \"mode\": \"single\",\n  \"location\": \"{{ $node[\"Webhook\"].json.body.location }}\",\n  \"video\": \"{{ $json.video }}\",\n  \"video_exists\": {{ $json.video_exists }}\n}",
+        "options": {}
+      },
+      "id": "c10ef2a2-3f1a-4712-88b9-87a27eb2a201",
+      "name": "Return Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        850,
+        250
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "AI Screenshot Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Screenshot Review": {
+      "main": [
+        [
+          {
+            "node": "Render Orbit Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Render Orbit Video": {
+      "main": [
+        [
+          {
+            "node": "Return Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
