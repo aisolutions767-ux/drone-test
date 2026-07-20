@@ -1,0 +1,112 @@
+{
+  "name": "3d",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "03ad63cd-9692-4a42-9781-55c9e5f214c7",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "f6680145-d9aa-42f0-a5b6-7e5c3629e2d2",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        250,
+        250
+      ],
+      "webhookId": "03ad63cd-9692-4a42-9781-55c9e5f214c7"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://drone-test-production-c060.up.railway.app/screenshot",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"location\": \"{{ $json.body.location }}\",\n  \"mode\": \"area\",\n  \"polygon\": {{ JSON.stringify($json.body.polygon) }},\n  \"range\": {{ $json.body.range }},\n  \"pitch\": {{ $json.body.pitch }}\n}",
+        "options": {}
+      },
+      "id": "9cb927bb-bb11-4f1e-aa86-cf12a7a5a9fe",
+      "name": "AI Screenshot Review",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        450,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://drone-test-production-c060.up.railway.app/render",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"location\": \"{{ $node[\"Webhook\"].json.body.location }}\",\n  \"mode\": \"area\",\n  \"polygon\": {{ JSON.stringify($node[\"Webhook\"].json.body.polygon) }},\n  \"extruded_height\": {{ $node[\"Webhook\"].json.body.extruded_height }},\n  \"range\": {{ $json.approved_params.range }},\n  \"pitch\": {{ $json.approved_params.pitch }},\n  \"frames\": {{ $node[\"Webhook\"].json.body.frames }}\n}",
+        "options": {}
+      },
+      "id": "b1e793ac-4bfa-4c53-b3c9-9403a4ebc402",
+      "name": "Render Grid Scan Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        650,
+        250
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"success\",\n  \"message\": \"Drone mission complete\",\n  \"mode\": \"area\",\n  \"location\": \"{{ $node[\"Webhook\"].json.body.location }}\",\n  \"video\": \"{{ $json.video }}\",\n  \"video_exists\": {{ $json.video_exists }}\n}",
+        "options": {}
+      },
+      "id": "d0e1b10a-3c72-463e-bb36-9a2c26b21589",
+      "name": "Return Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        850,
+        250
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "AI Screenshot Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Screenshot Review": {
+      "main": [
+        [
+          {
+            "node": "Render Grid Scan Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Render Grid Scan Video": {
+      "main": [
+        [
+          {
+            "node": "Return Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
