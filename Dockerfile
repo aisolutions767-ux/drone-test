@@ -1,10 +1,11 @@
 FROM mcr.microsoft.com/playwright:v1.40.0-jammy
 
-# Install python3, pip, and ffmpeg
+# Install python3, pip, ffmpeg, and xvfb virtual frame buffer
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     ffmpeg \
+    xvfb \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
