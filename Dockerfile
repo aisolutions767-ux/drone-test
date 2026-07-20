@@ -28,5 +28,5 @@ ENV PLAYWRIGHT_JSON_OUTPUT=true
 # Expose port
 EXPOSE 8765
 
-# Start command
-CMD ["python3", "drone_server.py"]
+# Start command with virtual framebuffer for headless WebGL support
+CMD ["xvfb-run", "-a", "python3", "drone_server.py"]
