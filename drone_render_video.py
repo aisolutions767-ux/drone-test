@@ -224,9 +224,13 @@ def render_video(location: str, mode: str, params: dict, frames: int,
     click.echo(f"Generated {len(frame_positions)} frame positions.")
 
     with sync_playwright() as p:
+        import sys
+        browser_args = []
+        if sys.platform != "win32":
+            browser_args = ["--use-gl=angle", "--use-angle=swiftshader", "--ignore-gpu-blocklist"]
         browser = p.chromium.launch(
             headless=not headed,
-            args=["--use-gl=angle", "--use-angle=swiftshader", "--ignore-gpu-blocklist"]
+            args=browser_args
         )
         context = browser.new_context(viewport={"width": 1280, "height": 720})
         page = context.new_page()
