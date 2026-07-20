@@ -279,6 +279,29 @@ def serve_index():
 
 @app.get("/config.js")
 def serve_config():
+    try:
+        config_path = DRONE_DIR / "config.js"
+        if config_path.exists():
+            content = config_path.read_text(encoding="utf-8")
+            import os
+            
+            # Check if cloud environment variables are present
+            gemini = os.getenv("GEMINI_API_KEY")
+            openrouter = os.getenv("OPENROUTER_API_KEY")
+            cesium = os.getenv("CESIUM_ION_TOKEN")
+            
+            # Replace placeholders in config.js dynamically with the environment variables
+            if gemini and "__GEMINI_API_KEY__" in content:
+                content = content.replace("__GEMINI_API_KEY__", gemini)
+            if openrouter and "__OPENROUTER_API_KEY__" in content:
+                content = content.replace("__OPENROUTER_API_KEY__", openrouter)
+            if cesium and "__CESIUM_ION_TOKEN__" in content:
+                content = content.replace("__CESIUM_ION_TOKEN__", cesium)
+                
+            from fastapi.responses import Response
+            return Response(content=content, media_type="application/javascript")
+    except Exception as e:
+        print(f"[Server Warning] Failed to dynamically process config.js: {e}")
     return FileResponse(DRONE_DIR / "config.js")
 
 
