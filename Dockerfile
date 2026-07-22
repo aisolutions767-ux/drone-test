@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     ffmpeg \
     xvfb \
+    xauth \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -30,4 +31,4 @@ ENV PLAYWRIGHT_JSON_OUTPUT=true
 EXPOSE 8765
 
 # Start command with virtual framebuffer for headless WebGL support
-CMD ["xvfb-run", "-a", "python3", "drone_server.py"]
+CMD ["python3", "drone_server.py"]
