@@ -217,7 +217,12 @@
                     timeline: false,
                     navigationHelpButton: false,
                     navigationInstructionsInitiallyVisible: false,
-                    shadows: true
+                    shadows: true,
+                    contextOptions: {
+                        webgl: {
+                            preserveDrawingBuffer: true
+                        }
+                    }
                 });
 
                 // Add OpenStreetMap base imagery layer
@@ -373,7 +378,9 @@
         // Check if all tiles are loaded
         function isLoaded() {
             if (!viewer) return false;
-            return viewer.scene.globe.tilesLoaded;
+            const globeLoaded = viewer.scene.globe.tilesLoaded;
+            const tilesetLoaded = !active3dTileset || active3dTileset.tilesLoaded;
+            return globeLoaded && tilesetLoaded;
         }
 
         // Monitor tile loading progress for HUD
