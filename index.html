@@ -2013,12 +2013,13 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
             }
 
             // Determine target webhook URL dynamically based on the active mode (or use local backend)
+            // Pin Mode ('single') always queries the n8n AI webhook directly to fetch path coordinates.
             let targetUrl = "/mission";
-            if (!USE_LOCAL_BACKEND) {
+            if (previewTargetMode === 'single') {
+                targetUrl = N8N_SINGLE_URL;
+            } else if (!USE_LOCAL_BACKEND) {
                 targetUrl = N8N_PATH_URL;
-                if (previewTargetMode === 'single') {
-                    targetUrl = N8N_SINGLE_URL;
-                } else if (previewTargetMode === 'area') {
+                if (previewTargetMode === 'area') {
                     targetUrl = N8N_AREA_URL;
                 }
             }
@@ -2035,20 +2036,25 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
             }
 
             // Display loading overlay
+            let loadingTitle = "Dispatching Drone";
+            let loadingMessage = "Connecting to mission control, mapping area coordinates, and preparing flight plans...";
+            if (previewTargetMode === 'single') {
+                loadingTitle = "Calculating Flight Path";
+                loadingMessage = "AI is analyzing telemetry and generating the optimal 3D flight path. This typically takes 10-15 seconds...";
+            }
+
             showOverlay(`
                 <div class="loader-ring"></div>
-                <div class="status-title">Dispatching Drone</div>
-                <div class="status-message">Connecting to mission control, mapping area coordinates, and preparing flight plans...</div>
-                <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 10px; word-break: break-all;">Target Webhook: ${targetUrl}</div>
+                <div class="status-title">${loadingTitle}</div>
+                <div class="status-message">${loadingMessage}</div>
+                <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 10px; word-break: break-all;">Target: ${targetUrl}</div>
                 <pre>${JSON.stringify(displayPayload, null, 2)}</pre>
             `);
 
-            // Trigger n8n webhook in background (fire-and-forget) if we are using the local backend
-            if (USE_LOCAL_BACKEND) {
+            // Trigger n8n webhook in background (fire-and-forget) if we are using the local backend (excluding single mode which queries n8n directly)
+            if (USE_LOCAL_BACKEND && previewTargetMode !== 'single') {
                 let n8nWebhookUrl = N8N_PATH_URL;
-                if (previewTargetMode === 'single') {
-                    n8nWebhookUrl = N8N_SINGLE_URL;
-                } else if (previewTargetMode === 'area') {
+                if (previewTargetMode === 'area') {
                     n8nWebhookUrl = N8N_AREA_URL;
                 }
                 
