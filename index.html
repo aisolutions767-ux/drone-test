@@ -2109,14 +2109,19 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
                 }).catch(err => console.warn("Background n8n trigger failed:", err));
             }
 
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 seconds strict timeout
+
             try {
                 const response = await fetch(targetUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify(payload),
+                    signal: controller.signal
                 });
+                clearTimeout(timeoutId);
 
                 if (response.ok) {
                     const data = await response.json();
