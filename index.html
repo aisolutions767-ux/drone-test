@@ -1879,6 +1879,49 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
             }
         }
 
+        function generateFallbackSimulation(payload) {
+            console.warn("Generating local fallback path simulation...");
+            const centerLat = payload.lat || parseFloat(latInput.value);
+            const centerLon = payload.lon || parseFloat(lonInput.value);
+            const radius = payload.range || 300;
+            const altitude = payload.target_altitude || 100;
+            
+            const fallbackPath = [];
+            const numPoints = 36;
+            for (let i = 0; i <= numPoints; i++) {
+                const angle = (i / numPoints) * 2 * Math.PI;
+                const latOffset = (radius * Math.cos(angle)) / 111111;
+                const lonOffset = (radius * Math.sin(angle)) / (111111 * Math.cos(centerLat * Math.PI / 180));
+                
+                fallbackPath.push({
+                    lat: centerLat + latOffset,
+                    lon: centerLon + lonOffset,
+                    height: altitude
+                });
+            }
+            
+            const rangeVal = radius;
+            const pitchVal = payload.pitch || -30;
+            const locName = payload.location || 'Local Simulation Path';
+            const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(locName)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&path=${encodeURIComponent(JSON.stringify(fallbackPath))}`;
+            
+            window.open(pathUrl, '_blank');
+            
+            showOverlay(`
+                <div class="success-icon" style="background: var(--accent-cyan); color: #060913; width: 60px; height: 60px; font-size: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%; margin: 0 auto 20px;">✓</div>
+                <div class="status-title" style="color: var(--accent-cyan); font-size: 24px; font-weight: 700; margin-bottom: 12px;">Simulation Active (Local Fallback)</div>
+                <div class="status-message" style="margin-bottom: 20px; line-height: 1.6; color: #cbd5e1; font-size: 14px;">
+                    Connection to n8n AI webhook failed/timed out. A local 360° orbit flight path was generated client-side instead.
+                    <br><br>
+                    The interactive 3D simulation has been opened in a new tab!
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 15px;">
+                    <a href="${pathUrl}" target="_blank" class="close-btn" style="text-decoration: none; display: inline-block; background: var(--accent-cyan); color: #060913; font-weight: 600; padding: 10px 20px; border-radius: 6px; border: none; cursor: pointer; transition: all 0.2s; font-size: 13px;">Open Simulation</a>
+                </div>
+                <button class="close-btn" style="background: transparent; color: #94a3b8; border: none; font-size: 13px; text-decoration: underline; cursor: pointer;" onclick="hideOverlay()">Return to Control Station</button>
+            `);
+        }
+
         // Step 1: Open Live Preview instead of posting directly
         launchBtn.addEventListener('click', () => {
             launchLivePreview();
@@ -2150,6 +2193,8 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
                             </div>
                             <button class="close-btn" style="background: transparent; color: #94a3b8; border: none; font-size: 13px; text-decoration: underline; cursor: pointer;" onclick="hideOverlay()">Return to Station</button>
                         `);
+                    } else if (previewTargetMode === 'single') {
+                        generateFallbackSimulation(payload);
                     } else {
                         showOverlay(`
                             <div class="error-icon" style="background: #ef4444; color: #fff; width: 60px; height: 60px; font-size: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%; margin: 0 auto 20px;">✗</div>
@@ -2171,6 +2216,8 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
                         </div>
                         <button class="close-btn" style="background: transparent; color: #94a3b8; border: none; font-size: 13px; text-decoration: underline; cursor: pointer;" onclick="hideOverlay()">Return to Station</button>
                     `);
+                } else if (previewTargetMode === 'single') {
+                    generateFallbackSimulation(payload);
                 } else {
                     showOverlay(`
                         <div class="error-icon" style="background: #ef4444; color: #fff; width: 60px; height: 60px; font-size: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%; margin: 0 auto 20px;">✗</div>
