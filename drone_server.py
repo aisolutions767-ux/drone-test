@@ -3,6 +3,12 @@
 #   "fastapi>=0.110.0",
 #   "uvicorn>=0.29.0",
 #   "python-dotenv>=1.0.0",
+#   "playwright>=1.40.0",
+#   "google-genai>=0.1.1",
+#   "click>=8.1.0",
+#   "pillow>=10.0.0",
+#   "opencv-python>=4.8.0.0",
+#   "requests>=2.31.0",
 # ]
 # ///
 
@@ -41,6 +47,15 @@ app.add_middleware(
 )
 
 DRONE_DIR = Path(__file__).parent
+
+# Ensure videos and screenshots directories exist
+(DRONE_DIR / "videos").mkdir(parents=True, exist_ok=True)
+(DRONE_DIR / "screenshots").mkdir(parents=True, exist_ok=True)
+
+# Mount static directories for media access
+from fastapi.staticfiles import StaticFiles
+app.mount("/videos", StaticFiles(directory=str(DRONE_DIR / "videos")), name="videos")
+app.mount("/screenshots", StaticFiles(directory=str(DRONE_DIR / "screenshots")), name="screenshots")
 
 
 class MissionPayload(BaseModel):
@@ -184,16 +199,36 @@ def run_render(payload: MissionPayload):
             capture_output=True, text=True, timeout=600
         )
         video_path = DRONE_DIR / "drone_video.mp4"
-        return {
-            "status": "done" if result.returncode == 0 else "error",
-            "stdout": result.stdout[-3000:],
-            "stderr": result.stderr[-1000:],
-            "returncode": result.returncode,
-            "location": payload.location,
-            "mode": payload.mode,
-            "video": str(video_path) if video_path.exists() else None,
-            "video_exists": video_path.exists(),
-        }
+        if result.returncode == 0 and video_path.exists():
+            import time
+            import re
+            import shutil
+            safe_location = re.sub(r'[^a-zA-Z0-9_-]', '_', payload.location)
+            unique_name = f"mission_{safe_location}_{int(time.time())}.mp4"
+            dest_path = DRONE_DIR / "videos" / unique_name
+            shutil.copy2(video_path, dest_path)
+            return {
+                "status": "done",
+                "stdout": result.stdout[-3000:],
+                "stderr": result.stderr[-1000:],
+                "returncode": result.returncode,
+                "location": payload.location,
+                "mode": payload.mode,
+                "video": f"videos/{unique_name}",
+                "local_path": str(dest_path.absolute()),
+                "video_exists": True,
+            }
+        else:
+            return {
+                "status": "error",
+                "stdout": result.stdout[-3000:],
+                "stderr": result.stderr[-1000:],
+                "returncode": result.returncode,
+                "location": payload.location,
+                "mode": payload.mode,
+                "video": None,
+                "video_exists": False,
+            }
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=504, detail="Render timeout (600s)")
     except Exception as e:
@@ -249,12 +284,20 @@ def run_mission(payload: MissionPayload):
 
         video_path = DRONE_DIR / "drone_video.mp4"
         if render_res.returncode == 0 and video_path.exists():
+            import time
+            import re
+            import shutil
+            safe_location = re.sub(r'[^a-zA-Z0-9_-]', '_', payload.location)
+            unique_name = f"mission_{safe_location}_{int(time.time())}.mp4"
+            dest_path = DRONE_DIR / "videos" / unique_name
+            shutil.copy2(video_path, dest_path)
             return {
                 "status": "success",
                 "message": "Drone mission complete!",
                 "mode": payload.mode,
                 "location": payload.location,
-                "video": str(video_path.absolute()),
+                "video": f"videos/{unique_name}",
+                "local_path": str(dest_path.absolute()),
                 "video_exists": True
             }
         else:
