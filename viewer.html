@@ -102,6 +102,66 @@
         .cesium-viewer-bottom {
             display: none !important;
         }
+
+        /* Sleek Chat Input Overlay at the bottom center */
+        #chat-overlay {
+            position: absolute;
+            bottom: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            background: rgba(10, 15, 28, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 30px;
+            padding: 8px 12px;
+            z-index: 1001;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            width: 90%;
+            max-width: 500px;
+            align-items: center;
+        }
+
+        #chat-input {
+            flex-grow: 1;
+            background: transparent;
+            border: none;
+            color: #fff;
+            padding: 8px 12px;
+            font-size: 14px;
+            outline: none;
+        }
+
+        #chat-input::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        #chat-send-btn {
+            background: #4facfe;
+            color: #0a0f1c;
+            border: none;
+            border-radius: 20px;
+            padding: 8px 20px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        #chat-send-btn:hover {
+            background: #00f2fe;
+            box-shadow: 0 0 10px rgba(0, 242, 254, 0.5);
+        }
+
+        #chat-send-btn:active {
+            transform: scale(0.95);
+        }
+
+        .chat-loading {
+            pointer-events: none;
+            opacity: 0.6;
+        }
     </style>
 </head>
 <body>
@@ -140,6 +200,12 @@
     <div id="loading-indicator">
         <div class="spinner"></div>
         <span id="loading-text">Loading Tiles...</span>
+    </div>
+
+    <!-- Sleek Chat Input Overlay at the bottom center -->
+    <div id="chat-overlay">
+        <input type="text" id="chat-input" placeholder="Don't like the path? Tell the AI director to adjust it..." />
+        <button id="chat-send-btn">Send</button>
     </div>
 
     <div id="cesiumContainer"></div>
@@ -548,6 +614,107 @@
             
             animate();
         }
+
+        // Chat Interaction Setup
+        const chatInput = document.getElementById('chat-input');
+        const chatSendBtn = document.getElementById('chat-send-btn');
+        const chatOverlay = document.getElementById('chat-overlay');
+
+        async function sendChatMessage() {
+            const message = chatInput.value.trim();
+            if (!message) return;
+
+            // Set sending state
+            chatInput.disabled = true;
+            chatSendBtn.disabled = true;
+            chatSendBtn.innerText = "Sending...";
+            chatOverlay.classList.add('chat-loading');
+
+            // Parse URL parameters for context
+            const urlParams = new URLSearchParams(window.location.search);
+            const lat = urlParams.get('lat') || '';
+            const lon = urlParams.get('lon') || '';
+            const range = urlParams.get('range') || '';
+            const pitch = urlParams.get('pitch') || '';
+            const heading = urlParams.get('heading') || '';
+            const mode = urlParams.get('mode') || '';
+            const name = urlParams.get('name') || '';
+
+            // Retrieve the path from URL if present
+            let pathData = null;
+            const rawPath = urlParams.get('path');
+            if (rawPath) {
+                try {
+                    pathData = JSON.parse(decodeURIComponent(rawPath));
+                } catch (e) {
+                    console.warn("Could not parse path data context:", e);
+                }
+            }
+
+            const feedbackPayload = {
+                message: message,
+                location: name,
+                mode: mode,
+                lat: lat ? parseFloat(lat) : null,
+                lon: lon ? parseFloat(lon) : null,
+                range: range ? parseFloat(range) : null,
+                pitch: pitch ? parseFloat(pitch) : null,
+                heading: heading ? parseFloat(heading) : null,
+                path: pathData
+            };
+
+            const webhookUrl = "https://bjl82de9.rpcl.app/webhook/09998941-d181-4470-9cbb-51fa22e0dfac";
+
+            try {
+                console.log("Sending user feedback to AI webhook:", feedbackPayload);
+                const response = await fetch(webhookUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(feedbackPayload)
+                });
+
+                if (response.ok) {
+                    // Try parsing response for path recalculations
+                    const responseData = await response.json();
+                    const result = Array.isArray(responseData) ? responseData[0] : responseData;
+                    
+                    if (result && result.path) {
+                        console.log("Received updated flight path from AI:", result.path);
+                        alert("AI Director: Optimal flight path updated successfully!");
+                        
+                        // Update current page path data dynamically and reload simulation!
+                        urlParams.set('path', encodeURIComponent(JSON.stringify(result.path)));
+                        if (result.range) urlParams.set('range', result.range);
+                        if (result.pitch) urlParams.set('pitch', result.pitch);
+                        window.location.search = urlParams.toString();
+                        return;
+                    }
+                    
+                    alert("Message delivered successfully to the AI Director!");
+                    chatInput.value = "";
+                } else {
+                    alert(`Failed to deliver message. Status: ${response.status}`);
+                }
+            } catch (error) {
+                console.error("Error sending feedback message:", error);
+                alert("Connection error: Unable to deliver feedback to the AI webhook.");
+            } finally {
+                // Restore state
+                chatInput.disabled = false;
+                chatSendBtn.disabled = false;
+                chatSendBtn.innerText = "Send";
+                chatOverlay.classList.remove('chat-loading');
+            }
+        }
+
+        chatSendBtn.addEventListener('click', sendChatMessage);
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                sendChatMessage();
+            }
+        });
 
         // Trigger initialization
         window.addEventListener('DOMContentLoaded', init);
