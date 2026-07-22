@@ -102,7 +102,12 @@ def save_staging_screenshot(payload_screenshot: Optional[str]) -> Optional[str]:
 
 def build_screenshot_cmd(payload: MissionPayload, staging_img_path: Optional[str] = None) -> list:
     import sys
-    cmd = [
+    import shutil
+    has_xvfb = shutil.which("xvfb-run") is not None
+    cmd = []
+    if has_xvfb:
+        cmd += ["xvfb-run", "-a", "--server-args=-screen 0 1280x720x24"]
+    cmd += [
         sys.executable,
         str(DRONE_DIR / "drone_capture_screenshots.py"),
         "--location", payload.location,
@@ -142,7 +147,12 @@ def build_screenshot_cmd(payload: MissionPayload, staging_img_path: Optional[str
 
 def build_render_cmd(payload: MissionPayload) -> list:
     import sys
-    cmd = [
+    import shutil
+    has_xvfb = shutil.which("xvfb-run") is not None
+    cmd = []
+    if has_xvfb:
+        cmd += ["xvfb-run", "-a", "--server-args=-screen 0 1280x720x24"]
+    cmd += [
         sys.executable,
         str(DRONE_DIR / "drone_render_video.py"),
         "--location", payload.location,
