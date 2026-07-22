@@ -848,6 +848,9 @@
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <script>
+        // Toggle to true to bypass cloud n8n and run everything 100% locally
+        const USE_LOCAL_BACKEND = true;
+
         // Webhook configurations for each flight mode
         const N8N_SINGLE_URL  = 'https://bjl82de9.rpcl.app/webhook/86f10356-6bfb-4f34-b31a-60dc4499c4ff';
         const N8N_AREA_URL    = 'https://bjl82de9.rpcl.app/webhook/03ad63cd-9692-4a42-9781-55c9e5f214c7';
@@ -2009,12 +2012,15 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
                 }
             }
 
-            // Determine target webhook URL dynamically based on the active mode
-            let targetUrl = N8N_PATH_URL;
-            if (previewTargetMode === 'single') {
-                targetUrl = N8N_SINGLE_URL;
-            } else if (previewTargetMode === 'area') {
-                targetUrl = N8N_AREA_URL;
+            // Determine target webhook URL dynamically based on the active mode (or use local backend)
+            let targetUrl = "/mission";
+            if (!USE_LOCAL_BACKEND) {
+                targetUrl = N8N_PATH_URL;
+                if (previewTargetMode === 'single') {
+                    targetUrl = N8N_SINGLE_URL;
+                } else if (previewTargetMode === 'area') {
+                    targetUrl = N8N_AREA_URL;
+                }
             }
 
             console.log("Dispatching mission payload:", payload, "to URL:", targetUrl);
@@ -2037,6 +2043,23 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
                 <pre>${JSON.stringify(displayPayload, null, 2)}</pre>
             `);
 
+            // Trigger n8n webhook in background (fire-and-forget) if we are using the local backend
+            if (USE_LOCAL_BACKEND) {
+                let n8nWebhookUrl = N8N_PATH_URL;
+                if (previewTargetMode === 'single') {
+                    n8nWebhookUrl = N8N_SINGLE_URL;
+                } else if (previewTargetMode === 'area') {
+                    n8nWebhookUrl = N8N_AREA_URL;
+                }
+                
+                console.log("Triggering background n8n webhook (fire-and-forget):", n8nWebhookUrl);
+                fetch(n8nWebhookUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                }).catch(err => console.warn("Background n8n trigger failed:", err));
+            }
+
             try {
                 const response = await fetch(targetUrl, {
                     method: 'POST',
@@ -2054,6 +2077,13 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
                         const payloadBlob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
                         const payloadUrl = URL.createObjectURL(payloadBlob);
                         
+                        let videoUrl = data.video || "";
+                        if (videoUrl && !videoUrl.startsWith("http") && !videoUrl.startsWith("videos/")) {
+                            videoUrl = `file:///${videoUrl.replace(/\\/g, "/")}`;
+                        } else if (videoUrl && videoUrl.startsWith("videos/")) {
+                            videoUrl = `/${videoUrl}`;
+                        }
+
                         showOverlay(`
                             <div class="success-icon" style="background: var(--accent-cyan); color: #060913; width: 60px; height: 60px; font-size: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%; margin: 0 auto 20px;">✓</div>
                             <div class="status-title" style="color: var(--accent-cyan); font-size: 24px; font-weight: 700; margin-bottom: 12px;">Mission Accomplished!</div>
@@ -2064,7 +2094,7 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
                                 <span style="font-family: monospace; font-size: 11px; background: rgba(30,41,59,0.5); padding: 6px 10px; border-radius: 4px; display: inline-block; margin-top: 5px; word-break: break-all; border: 1px solid rgba(255,255,255,0.1);">${data.video}</span>
                             </div>
                             <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 15px;">
-                                <a href="file:///${data.video.replace(/\\/g, '/')}" target="_blank" class="close-btn" style="text-decoration: none; display: inline-block; background: var(--accent-cyan); color: #060913; font-weight: 600; padding: 10px 20px; border-radius: 6px; border: none; cursor: pointer; transition: all 0.2s; font-size: 13px;">Open Video</a>
+                                <a href="${videoUrl}" target="_blank" class="close-btn" style="text-decoration: none; display: inline-block; background: var(--accent-cyan); color: #060913; font-weight: 600; padding: 10px 20px; border-radius: 6px; border: none; cursor: pointer; transition: all 0.2s; font-size: 13px;">Open Video</a>
                                 <a href="${payloadUrl}" download="drone_mission_payload.json" class="close-btn" style="text-decoration: none; display: inline-block; background: rgba(255,255,255,0.1); color: #fff; font-weight: 600; padding: 10px 20px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); cursor: pointer; transition: all 0.2s; font-size: 13px;">Download Payload</a>
                             </div>
                             <button class="close-btn" style="background: transparent; color: #94a3b8; border: none; font-size: 13px; text-decoration: underline; cursor: pointer;" onclick="hideOverlay()">Return to Control Station</button>
