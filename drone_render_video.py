@@ -237,9 +237,19 @@ def render_video(location: str, mode: str, params: dict, frames: int,
         page.on("console", lambda msg: click.echo(f"[Browser] {msg.text}") if "error" in msg.text.lower() else None)
 
         page.goto(viewer_url, wait_until="commit", timeout=0)
-        init_wait = 20 if mode == "path" else 5
-        click.echo(f"Waiting for Cesium to initialize ({init_wait}s)...")
-        time.sleep(init_wait)
+        click.echo("Waiting for Cesium scene and 3D buildings to load...")
+        import time
+        start_time = time.time()
+        loaded = False
+        while time.time() - start_time < 25:
+            if page.evaluate("typeof isLoaded === 'function' ? isLoaded() : false"):
+                loaded = True
+                break
+            time.sleep(0.2)
+        if loaded:
+            click.echo(f"Cesium fully loaded in {time.time() - start_time:.1f}s.")
+        else:
+            click.echo("Warning: Cesium load timeout reached. Proceeding anyway...")
 
         with tempfile.TemporaryDirectory() as tmpdir:
             frames_dir = Path(tmpdir)
@@ -251,10 +261,22 @@ def render_video(location: str, mode: str, params: dict, frames: int,
                     f"updateCamera({cam['lon']}, {cam['lat']}, "
                     f"{cam['range']}, {cam['heading']}, {cam['pitch']})"
                 )
-                time.sleep(0.12)  # allow WebGL to settle
+                
+                # Dynamic wait for 3D tiles of the new angle to fully load
+                start_frame = time.time()
+                frame_loaded = False
+                while time.time() - start_frame < 0.6:
+                    if page.evaluate("typeof isLoaded === 'function' ? isLoaded() : false"):
+                        frame_loaded = True
+                        break
+                    time.sleep(0.05)
+                
+                # Small safety buffer if loading timed out
+                if not frame_loaded:
+                    time.sleep(0.08)
 
                 frame_path = frames_dir / f"frame_{f_idx:05d}.png"
-                page.screenshot(path=str(frame_path), timeout=30000)
+                page.screenshot(path=str(frame_path), timeout=30000, animations="disabled")
 
                 if (f_idx + 1) % 10 == 0 or (f_idx + 1) == frames:
                     pct = (f_idx + 1) / frames * 100
