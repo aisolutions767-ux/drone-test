@@ -259,18 +259,20 @@ def capture_and_review(location: str, mode: str, params: dict,
         "name":  location,
         "token": cesium_token,
     })
-    # Check if local server is online to bypass file:// CORS blocks in Chromium
+    # Check if local server is online to bypass file:// CORS blocks in Chromium (supporting dynamic Railway port)
     import requests
+    import os
+    port = os.getenv("PORT", "8765")
     use_http = False
     try:
-        res = requests.get("http://localhost:8765/health", timeout=1)
+        res = requests.get(f"http://localhost:{port}/health", timeout=1)
         if res.status_code == 200:
             use_http = True
     except Exception:
         pass
 
     if use_http:
-        viewer_url = f"http://localhost:8765/viewer.html?{url_params}"
+        viewer_url = f"http://localhost:{port}/viewer.html?{url_params}"
     else:
         viewer_url = f"file:///{str(VIEWER_HTML).replace(chr(92), '/')}?{url_params}"
     click.echo(f"Viewer URL: {viewer_url}")
