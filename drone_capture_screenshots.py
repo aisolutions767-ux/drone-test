@@ -289,9 +289,20 @@ def capture_and_review(location: str, mode: str, params: dict,
         page.on("console", lambda msg: click.echo(f"[Browser] {msg.text}"))
 
         page.goto(viewer_url, wait_until="commit", timeout=0)
-        init_wait = 20 if mode == "path" else 5
-        click.echo(f"Waiting for Cesium to initialize ({init_wait}s)...")
-        time.sleep(init_wait)
+        click.echo("Waiting for Cesium scene and 3D buildings to load...")
+        import time
+        start_time = time.time()
+        loaded = False
+        # Wait up to 25 seconds for the initial load of tiles
+        while time.time() - start_time < 25:
+            if page.evaluate("typeof isLoaded === 'function' ? isLoaded() : false"):
+                loaded = True
+                break
+            time.sleep(0.2)
+        if loaded:
+            click.echo(f"Cesium fully loaded in {time.time() - start_time:.1f}s.")
+        else:
+            click.echo("Warning: Cesium load timeout reached. Proceeding anyway...")
 
         verified = False
         iteration = 0
@@ -331,11 +342,11 @@ def capture_and_review(location: str, mode: str, params: dict,
 
                 # Capture screenshot
                 try:
-                    screenshot_bytes = page.screenshot(full_page=False, timeout=10000)
+                    screenshot_bytes = page.screenshot(full_page=False, timeout=10000, animations="disabled")
                 except Exception as se:
                     click.secho(f"Screenshot timeout (fonts loading?), retrying fast...", fg="yellow")
                     try:
-                        screenshot_bytes = page.screenshot(full_page=False, timeout=2000)
+                        screenshot_bytes = page.screenshot(full_page=False, timeout=2000, animations="disabled")
                     except Exception:
                         # fallback to empty bytes
                         screenshot_bytes = b""
