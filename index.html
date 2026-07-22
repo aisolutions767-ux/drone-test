@@ -2071,8 +2071,29 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
 
                 if (response.ok) {
                     const data = await response.json();
+                    const result = Array.isArray(data) ? data[0] : data;
                     
-                    if (data.status === "success") {
+                    if (result && result.path) {
+                        const rangeVal = result.range || parseInt(pRangeSlider.value);
+                        const pitchVal = result.pitch || parseInt(pPitchSlider.value);
+                        const locName = result.location || addressInput.value.trim() || 'Selected Coordinates';
+                        const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(locName)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&path=${encodeURIComponent(JSON.stringify(result.path))}`;
+                        window.open(pathUrl, '_blank');
+                        
+                        showOverlay(`
+                            <div class="success-icon" style="background: var(--accent-cyan); color: #060913; width: 60px; height: 60px; font-size: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%; margin: 0 auto 20px;">✓</div>
+                            <div class="status-title" style="color: var(--accent-cyan); font-size: 24px; font-weight: 700; margin-bottom: 12px;">Simulation Active</div>
+                            <div class="status-message" style="margin-bottom: 20px; line-height: 1.6; color: #cbd5e1; font-size: 14px;">
+                                AI has calculated the best drone flight path for <strong>${locName}</strong>.
+                                <br><br>
+                                The interactive 3D simulation has been opened in a new tab!
+                            </div>
+                            <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 15px;">
+                                <a href="${pathUrl}" target="_blank" class="close-btn" style="text-decoration: none; display: inline-block; background: var(--accent-cyan); color: #060913; font-weight: 600; padding: 10px 20px; border-radius: 6px; border: none; cursor: pointer; transition: all 0.2s; font-size: 13px;">Open Simulation</a>
+                            </div>
+                            <button class="close-btn" style="background: transparent; color: #94a3b8; border: none; font-size: 13px; text-decoration: underline; cursor: pointer;" onclick="hideOverlay()">Return to Control Station</button>
+                        `);
+                    } else if (data.status === "success") {
                         // Create a blob URL to download the payload JSON
                         const payloadBlob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
                         const payloadUrl = URL.createObjectURL(payloadBlob);
