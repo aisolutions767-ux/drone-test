@@ -162,9 +162,62 @@
             pointer-events: none;
             opacity: 0.6;
         }
+
+        /* Fullscreen Overlay for path regeneration */
+        #simulation-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(6, 9, 19, 0.95);
+            z-index: 2000;
+            display: none; /* Hidden by default */
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        .loader-ring {
+            display: inline-block;
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(79, 172, 254, 0.3);
+            border-radius: 50%;
+            border-top-color: #4facfe;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        #simulation-overlay-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #4facfe;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        #simulation-overlay-message {
+            font-size: 14px;
+            color: #cbd5e1;
+            max-width: 450px;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
     </style>
 </head>
 <body>
+    <!-- Fullscreen Simulation Overlay for path regeneration -->
+    <div id="simulation-overlay">
+        <div class="loader-ring"></div>
+        <div id="simulation-overlay-title">Regenerating Flight Path</div>
+        <div id="simulation-overlay-message">AI Director is analyzing your feedback and recalculating the flight coordinates. Please wait up to 60 seconds...</div>
+    </div>
+
     <div id="hud">
         <h2>Virtual Drone HUD <div class="spinner" id="hud-spinner" style="display:none;"></div></h2>
         <div class="hud-row">
@@ -624,6 +677,12 @@
             const message = chatInput.value.trim();
             if (!message) return;
 
+            // Show fullscreen regeneration loading overlay
+            const simOverlay = document.getElementById('simulation-overlay');
+            if (simOverlay) {
+                simOverlay.style.display = 'flex';
+            }
+
             // Set sending state
             chatInput.disabled = true;
             chatSendBtn.disabled = true;
@@ -665,6 +724,10 @@
 
             const webhookUrl = "https://bjl82de9.rpcl.app/webhook/09998941-d181-4470-9cbb-51fa22e0dfac";
 
+            // Configure 60-second AbortController timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 60000);
+
             try {
                 console.log("Sending user feedback to AI webhook:", feedbackPayload);
                 const response = await fetch(webhookUrl, {
@@ -672,8 +735,10 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify(feedbackPayload)
+                    body: JSON.stringify(feedbackPayload),
+                    signal: controller.signal
                 });
+                clearTimeout(timeoutId);
 
                 if (response.ok) {
                     // Try parsing response for path recalculations
@@ -682,7 +747,6 @@
                     
                     if (result && result.path) {
                         console.log("Received updated flight path from AI:", result.path);
-                        alert("AI Director: Optimal flight path updated successfully!");
                         
                         // Update current page path data dynamically and reload simulation!
                         urlParams.set('path', encodeURIComponent(JSON.stringify(result.path)));
@@ -692,14 +756,22 @@
                         return;
                     }
                     
-                    alert("Message delivered successfully to the AI Director!");
+                    alert("Feedback sent successfully, but no updated flight path was returned by the AI Director.");
+                    if (simOverlay) simOverlay.style.display = 'none';
                     chatInput.value = "";
                 } else {
                     alert(`Failed to deliver message. Status: ${response.status}`);
+                    if (simOverlay) simOverlay.style.display = 'none';
                 }
             } catch (error) {
+                clearTimeout(timeoutId);
                 console.error("Error sending feedback message:", error);
-                alert("Connection error: Unable to deliver feedback to the AI webhook.");
+                if (error.name === 'AbortError') {
+                    alert("Timeout: n8n AI webhook took too long (exceeded 60 seconds). Please check your workflow.");
+                } else {
+                    alert("Connection error: Unable to deliver feedback to the AI webhook.");
+                }
+                if (simOverlay) simOverlay.style.display = 'none';
             } finally {
                 // Restore state
                 chatInput.disabled = false;
