@@ -2004,10 +2004,44 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
                 Object.assign(payload, cameraParams);
                 console.log("Captured camera position & orientation from 3D scene:", cameraParams);
             } else if (previewTargetMode === 'area') {
-                payload.polygon = stagedVerticesList;
+                // Populate detailed 3D dimensions for each polygon vertex
+                payload.polygon = stagedVerticesList.map(v => ({
+                    lat: v.lat,
+                    lon: v.lon,
+                    base_elevation: v.height,
+                    extruded_height: stagedExtrusionHeight,
+                    top_elevation: v.height + stagedExtrusionHeight
+                }));
                 payload.extruded_height = stagedExtrusionHeight;
+
+                // Calculate bounding center coordinates (centroid) of the polygon
+                let sumLat = 0;
+                let sumLon = 0;
+                for (let v of stagedVerticesList) {
+                    sumLat += v.lat;
+                    sumLon += v.lon;
+                }
+                payload.lat = sumLat / stagedVerticesList.length;
+                payload.lon = sumLon / stagedVerticesList.length;
+
+                // Merge direct viewer camera coordinates & orientation values
+                Object.assign(payload, cameraParams);
+                console.log("Area Mode: Centroid calculated and camera parameters merged:", payload);
             } else if (previewTargetMode === 'path') {
                 payload.path = stagedVerticesList;
+
+                // Calculate bounding center of the path waypoints
+                let sumLat = 0;
+                let sumLon = 0;
+                for (let v of stagedVerticesList) {
+                    sumLat += v.lat;
+                    sumLon += v.lon;
+                }
+                payload.lat = sumLat / stagedVerticesList.length;
+                payload.lon = sumLon / stagedVerticesList.length;
+
+                // Merge direct viewer camera coordinates & orientation values
+                Object.assign(payload, cameraParams);
                 
                 // Open viewer.html in a new tab with the path payload (simulation)
                 const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(payload.location)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&path=${encodeURIComponent(JSON.stringify(stagedVerticesList))}`;
