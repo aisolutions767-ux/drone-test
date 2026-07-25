@@ -567,13 +567,17 @@
                 try {
                     pathPts = JSON.parse(pathStr);
                 } catch (innerError) {
-                    console.error("Failed to parse path query parameter:", innerError);
+                    const overlay = document.getElementById('countdown-overlay');
+                    if (overlay) overlay.style.display = 'none';
                     return;
                 }
             }
-            if (pathPts.length === 0) return;
-
             const overlay = document.getElementById('countdown-overlay');
+            if (pathPts.length === 0) {
+                console.warn("Empty path array in query parameters.");
+                if (overlay) overlay.style.display = 'none';
+                return;
+            }
 
             let secondsRemaining = 20;
             const timerInterval = setInterval(() => {
