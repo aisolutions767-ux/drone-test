@@ -27,6 +27,8 @@ Endpoints:
   GET  /health       - Health check
 """
 
+import os
+import time
 import subprocess
 import sys
 import json
@@ -386,18 +388,86 @@ from fastapi.responses import StreamingResponse
 def generate_video_ai(payload: dict):
     def event_stream():
         yield "data: " + json.dumps({"status": "info", "message": "[Alternative 1 Server] Initializing Local Video AI workflow..."}) + "\n\n"
-        time.sleep(1)
+        time.sleep(0.5)
         
-        # 1. Locate the newest video file in the videos directory
+        # 1. Locate the newest video file — check local videos/, then parent drone/videos/
         videos_dir = DRONE_DIR / "videos"
-        videos = sorted(videos_dir.glob("*.mp4"), key=os.path.getmtime)
+        parent_videos_dir = DRONE_DIR.parent / "videos"
+        
+        videos = sorted(videos_dir.glob("*.mp4"), key=os.path.getmtime) if videos_dir.exists() else []
+        if not videos and parent_videos_dir.exists():
+            yield "data: " + json.dumps({"status": "info", "message": "No local videos found. Checking parent drone/videos/ directory..."}) + "\n\n"
+            videos = sorted(parent_videos_dir.glob("*.mp4"), key=os.path.getmtime)
+        
+        # 2. If still no videos, render one on-the-fly from the path data
         if not videos:
-            yield "data: " + json.dumps({"status": "error", "message": "Error: No rendered drone videos found. Please run a mission first."}) + "\n\n"
-            return
+            yield "data: " + json.dumps({"status": "info", "message": "No pre-rendered videos found. Rendering video from flight path data..."}) + "\n\n"
+            
+            path_data = payload.get("path")
+            location = payload.get("location", "Unknown")
+            lat = payload.get("lat", 41.0)
+            lon = payload.get("lon", 29.0)
+            cam_range = payload.get("range", 350)
+            pitch = payload.get("pitch", -25)
+            heading = payload.get("heading", 45)
+            
+            render_script = DRONE_DIR / "drone_render_video.py"
+            if not render_script.exists():
+                render_script = DRONE_DIR.parent / "drone_render_video.py"
+                
+            if not render_script.exists():
+                yield "data: " + json.dumps({"status": "error", "message": "Error: drone_render_video.py not found. Cannot render video."}) + "\n\n"
+                return
+            
+            cmd = [
+                sys.executable, str(render_script),
+                "--location", str(location),
+                "--lat", str(lat), "--lon", str(lon),
+                "--range", str(int(cam_range)),
+                "--pitch", str(int(pitch)),
+                "--heading", str(int(heading)),
+                "--frames", "36", "--fps", "24"
+            ]
+            
+            if path_data and isinstance(path_data, list):
+                cmd.extend(["--mode", "path", "--path", json.dumps(path_data)])
+            
+            yield "data: " + json.dumps({"status": "info", "message": f"Executing: drone_render_video.py --location \"{location}\" --frames 36 ..."}) + "\n\n"
+            
+            try:
+                render_result = subprocess.run(
+                    cmd, cwd=str(DRONE_DIR),
+                    capture_output=True, text=True, timeout=300
+                )
+                
+                if render_result.returncode != 0:
+                    yield "data: " + json.dumps({"status": "error", "message": f"Render failed: {render_result.stderr[-500:]}"}) + "\n\n"
+                    return
+                    
+                yield "data: " + json.dumps({"status": "info", "message": "Video rendering complete!"}) + "\n\n"
+                
+                # Re-check for new video
+                drone_video = DRONE_DIR / "drone_video.mp4"
+                if drone_video.exists():
+                    videos = [drone_video]
+                else:
+                    videos = sorted(videos_dir.glob("*.mp4"), key=os.path.getmtime) if videos_dir.exists() else []
+                    
+                if not videos:
+                    yield "data: " + json.dumps({"status": "error", "message": "Error: Video render completed but output file not found."}) + "\n\n"
+                    return
+                    
+            except subprocess.TimeoutExpired:
+                yield "data: " + json.dumps({"status": "error", "message": "Error: Video render timed out (300s)."}) + "\n\n"
+                return
+            except Exception as render_err:
+                yield "data: " + json.dumps({"status": "error", "message": f"Render exception: {str(render_err)}"}) + "\n\n"
+                return
             
         target_video = videos[-1]
-        yield "data: " + json.dumps({"status": "info", "message": f"Successfully located latest drone video: {target_video.name}"}) + "\n\n"
-        time.sleep(1)
+        size_mb = target_video.stat().st_size / (1024 * 1024)
+        yield "data: " + json.dumps({"status": "info", "message": f"Located drone video: {target_video.name} ({size_mb:.1f} MB)"}) + "\n\n"
+        time.sleep(0.5)
         
         gemini_key = os.getenv("GEMINI_API_KEY")
         if not gemini_key:
