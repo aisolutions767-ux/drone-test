@@ -691,6 +691,7 @@
 
             // Parse URL parameters for context
             const urlParams = new URLSearchParams(window.location.search);
+            const sessionId = urlParams.get('session_id') || '';
             const lat = urlParams.get('lat') || '';
             const lon = urlParams.get('lon') || '';
             const range = urlParams.get('range') || '';
@@ -711,6 +712,7 @@
             }
 
             const feedbackPayload = {
+                session_id: sessionId,
                 message: message,
                 location: name,
                 mode: mode,
