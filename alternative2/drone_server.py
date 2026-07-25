@@ -364,6 +364,92 @@ def run_mission(payload: MissionPayload):
 
 
 
+from fastapi.responses import StreamingResponse
+import base64
+
+@app.post("/generate_video_ai")
+def generate_video_ai(payload: dict):
+    def event_stream():
+        yield "data: " + json.dumps({"status": "info", "message": "[Alternative 2 Server] Initializing Frame-by-Frame AI workflow..."}) + "\n\n"
+        time.sleep(1)
+        
+        keyframes = payload.get("path", [])
+        if not keyframes:
+            yield "data: " + json.dumps({"status": "error", "message": "Error: No keyframe coordinates found. Please record a path or waypoints first."}) + "\n\n"
+            return
+            
+        yield "data: " + json.dumps({"status": "info", "message": f"Successfully unpacked path with {len(keyframes)} keyframe nodes."}) + "\n\n"
+        time.sleep(0.5)
+        
+        gemini_key = os.getenv("GEMINI_API_KEY")
+        if not gemini_key:
+            yield "data: " + json.dumps({"status": "error", "message": "Error: GEMINI_API_KEY environment variable is not set."}) + "\n\n"
+            return
+            
+        try:
+            from google import genai
+            from google.genai import types
+            
+            yield "data: " + json.dumps({"status": "info", "message": "Connecting to Google Gemini API..."}) + "\n\n"
+            client = genai.Client(api_key=gemini_key)
+            
+            contents = []
+            valid_images_count = 0
+            
+            for idx, kf in enumerate(keyframes):
+                img_data = kf.get("screenshot")
+                if img_data and "," in img_data:
+                    yield "data: " + json.dumps({"status": "info", "message": f"Processing screenshot for keyframe {idx + 1}... decoding Base64 payload."}) + "\n\n"
+                    try:
+                        base64_data = img_data.split(",")[1]
+                        image_bytes = base64.b64decode(base64_data)
+                        contents.append(
+                            types.Part(
+                                inline_data=types.Blob(
+                                    mime_type="image/jpeg",
+                                    data=image_bytes
+                                )
+                            )
+                        )
+                        valid_images_count += 1
+                        time.sleep(0.1)
+                    except Exception as dec_err:
+                        yield "data: " + json.dumps({"status": "warning", "message": f"Warning: Failed to decode frame {idx + 1}: {str(dec_err)}"}) + "\n\n"
+            
+            if not contents:
+                yield "data: " + json.dumps({"status": "error", "message": "Error: No valid base64 screenshots were attached to the flight path."}) + "\n\n"
+                return
+                
+            yield "data: " + json.dumps({"status": "info", "message": f"Sending {valid_images_count} frames and telemetry constraints to Gemini 2.0 Flash..."}) + "\n\n"
+            
+            prompt = (
+                f"You are an AI video generation director. You are given {valid_images_count} sequential keyframe screenshots "
+                f"representing a flight path over: '{payload.get('location', 'Selected Coordinates')}'.\n"
+                "Your task is to analyze these screenshots and generate a detailed video prompt script for AI video generators (like Sora or Runway Gen-3).\n"
+                "For each keyframe transition, output a detailed prompt describing the camera angle, motion, realistic lighting, shadows, "
+                "and texture enhancements (e.g. realistic reflections, detailed foliage, weather, cinematic look) needed to turn these "
+                "simple 3D viewports into a highly realistic drone shot video.\n"
+                "Respond with a clear, structured Markdown timeline script."
+            )
+            contents.append(types.Part(text=prompt))
+            
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=contents
+            )
+            
+            yield "data: " + json.dumps({
+                "status": "success",
+                "message": "AI storyboard and prompt timeline generated successfully!",
+                "result": response.text.strip()
+            }) + "\n\n"
+            
+        except Exception as e:
+            yield "data: " + json.dumps({"status": "error", "message": f"Processing exception occurred: {str(e)}"}) + "\n\n"
+            
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
 @app.get("/")
 def serve_index():
     return FileResponse(DRONE_DIR / "index.html")
