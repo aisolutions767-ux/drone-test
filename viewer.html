@@ -250,6 +250,14 @@
         </div>
     </div>
 
+    <!-- Beautiful fullscreen loading countdown screen -->
+    <div id="countdown-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(6, 9, 19, 0.98); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; font-family: sans-serif;">
+        <div class="loader-ring" style="width: 60px; height: 60px; border: 3px solid rgba(255,255,255,0.05); border-top: 3px solid #00f2fe; border-radius: 50%; animation: spin 1.2s linear infinite; margin-bottom: 20px;"></div>
+        <h2 style="color: #00f2fe; margin-bottom: 10px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase;">Loading 3D Terrain & Map Tiles</h2>
+        <p style="color: #cbd5e1; font-size: 14px; margin-bottom: 10px;">Waiting 20 seconds for high-resolution pixels to fully load...</p>
+        <h1 id="countdown-timer" style="font-size: 64px; font-weight: 900; margin-top: 10px; color: #fff; text-shadow: 0 0 20px rgba(0,242,254,0.3);">20</h1>
+    </div>
+
     <div id="loading-indicator">
         <div class="spinner"></div>
         <span id="loading-text">Loading Tiles...</span>
@@ -414,6 +422,10 @@
                 const pathStr = urlParams.get('path');
                 if (mode === 'path' && pathStr) {
                     setupPathFlight(pathStr);
+                } else {
+                    // Hide countdown overlay immediately if opened directly
+                    const overlay = document.getElementById('countdown-overlay');
+                    if (overlay) overlay.style.display = 'none';
                 }
 
             } catch (error) {
@@ -536,41 +548,7 @@
             }
             if (pathPts.length === 0) return;
 
-            // Create countdown overlay DOM element
-            const overlay = document.createElement('div');
-            overlay.style.position = 'fixed';
-            overlay.style.top = '0';
-            overlay.style.left = '0';
-            overlay.style.width = '100%';
-            overlay.style.height = '100%';
-            overlay.style.background = 'rgba(6, 9, 19, 0.95)';
-            overlay.style.zIndex = '9999';
-            overlay.style.display = 'flex';
-            overlay.style.flexDirection = 'column';
-            overlay.style.alignItems = 'center';
-            overlay.style.justifyContent = 'center';
-            overlay.style.color = '#fff';
-            overlay.style.fontFamily = 'sans-serif';
-            overlay.innerHTML = `
-                <div class="loader-ring" style="width: 60px; height: 60px; border: 3px solid rgba(255,255,255,0.05); border-top: 3px solid #00f2fe; border-radius: 50%; animation: spin 1.2s linear infinite; margin-bottom: 20px;"></div>
-                <h2 style="color: #00f2fe; margin-bottom: 10px; font-weight: 800; letter-spacing: 1px;">LOADING 3D TERRAIN & MAP TILES</h2>
-                <p style="color: #cbd5e1; font-size: 14px; margin-bottom: 10px;">Waiting 20 seconds for high-resolution pixels to fully load...</p>
-                <h1 id="countdown-timer" style="font-size: 64px; font-weight: 900; margin-top: 10px; color: #fff; text-shadow: 0 0 20px rgba(0,242,254,0.3);">20</h1>
-            `;
-            document.body.appendChild(overlay);
-
-            // Add rotation keyframe style dynamically if needed
-            if (!document.getElementById('spin-style')) {
-                const style = document.createElement('style');
-                style.id = 'spin-style';
-                style.innerHTML = `
-                    @keyframes spin {
-                        0% { transform: rotate(0deg); }
-                        100% { transform: rotate(360deg); }
-                    }
-                `;
-                document.head.appendChild(style);
-            }
+            const overlay = document.getElementById('countdown-overlay');
 
             let secondsRemaining = 20;
             const timerInterval = setInterval(() => {
@@ -581,8 +559,8 @@
                 }
                 if (secondsRemaining <= 0) {
                     clearInterval(timerInterval);
-                    if (document.body.contains(overlay)) {
-                        document.body.removeChild(overlay);
+                    if (overlay) {
+                        overlay.style.display = 'none';
                     }
                     // Run flight animation
                     const range = parseFloat(urlParams.get('range')) || 300;
