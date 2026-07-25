@@ -297,10 +297,19 @@
         
         // If lat/lon are missing, try reading them from the path payload
         if (isNaN(defaultLat) || isNaN(defaultLon)) {
-            const pathStr = urlParams.get('path');
+            const pathSource = urlParams.get('path_source');
+            let pathStr = urlParams.get('path');
+            if (pathSource === 'local') {
+                pathStr = localStorage.getItem('drone_recorded_path');
+            }
             if (pathStr) {
                 try {
-                    const pts = JSON.parse(decodeURIComponent(pathStr));
+                    let pts;
+                    try {
+                        pts = JSON.parse(pathStr);
+                    } catch (pe) {
+                        pts = JSON.parse(decodeURIComponent(pathStr));
+                    }
                     if (pts && pts.length > 0) {
                         defaultLat = parseFloat(pts[0].lat);
                         defaultLon = parseFloat(pts[0].lon);
@@ -440,7 +449,13 @@
 
                 // Check if path parameter exists to start flight animation
                 const mode = urlParams.get('mode');
-                const pathStr = urlParams.get('path');
+                const pathSource = urlParams.get('path_source');
+                let pathStr = urlParams.get('path');
+                
+                if (pathSource === 'local') {
+                    pathStr = localStorage.getItem('drone_recorded_path');
+                }
+
                 if (mode === 'path' && pathStr) {
                     setupPathFlight(pathStr);
                 } else {
