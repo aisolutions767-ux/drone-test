@@ -2228,6 +2228,10 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
                 return;
             }
 
+            // Capture deep copies of drawing state before closeLivePreview() resets them
+            const finalStagedVertices = JSON.parse(JSON.stringify(stagedVerticesList));
+            const finalRecordedKeyframes = JSON.parse(JSON.stringify(recordedKeyframes));
+
             // Get visually-adjusted preview telemetry values
             const rangeVal = parseInt(pRangeSlider.value);
             const pitchVal = parseInt(pPitchSlider.value);
@@ -2280,7 +2284,7 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
                 console.log("Captured camera position & orientation from 3D scene:", cameraParams);
             } else if (previewTargetMode === 'area') {
                 // Populate detailed 3D dimensions for each polygon vertex
-                payload.polygon = stagedVerticesList.map(v => ({
+                payload.polygon = finalStagedVertices.map(v => ({
                     lat: v.lat,
                     lon: v.lon,
                     base_elevation: v.height,
@@ -2292,47 +2296,47 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
                 // Calculate bounding center coordinates (centroid) of the polygon
                 let sumLat = 0;
                 let sumLon = 0;
-                for (let v of stagedVerticesList) {
+                for (let v of finalStagedVertices) {
                     sumLat += v.lat;
                     sumLon += v.lon;
                 }
-                payload.lat = sumLat / stagedVerticesList.length;
-                payload.lon = sumLon / stagedVerticesList.length;
+                payload.lat = sumLat / finalStagedVertices.length;
+                payload.lon = sumLon / finalStagedVertices.length;
 
                 // Merge direct viewer camera coordinates & orientation values
                 Object.assign(payload, cameraParams);
                 console.log("Area Mode: Centroid calculated and camera parameters merged:", payload);
             } else if (previewTargetMode === 'path') {
-                payload.path = stagedVerticesList;
+                payload.path = finalStagedVertices;
 
                 // Calculate bounding center of the path waypoints
                 let sumLat = 0;
                 let sumLon = 0;
-                for (let v of stagedVerticesList) {
+                for (let v of finalStagedVertices) {
                     sumLat += v.lat;
                     sumLon += v.lon;
                 }
-                payload.lat = sumLat / stagedVerticesList.length;
-                payload.lon = sumLon / stagedVerticesList.length;
+                payload.lat = sumLat / finalStagedVertices.length;
+                payload.lon = sumLon / finalStagedVertices.length;
 
                 // Merge direct viewer camera coordinates & orientation values
                 Object.assign(payload, cameraParams);
                 
                 // Open viewer.html in a new tab with the path payload (simulation)
-                const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(payload.location)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&session_id=${encodeURIComponent(sessionId)}&target_mode=${encodeURIComponent(previewTargetMode)}&path=${encodeURIComponent(JSON.stringify(stagedVerticesList))}`;
+                const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(payload.location)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&session_id=${encodeURIComponent(sessionId)}&target_mode=${encodeURIComponent(previewTargetMode)}&path=${encodeURIComponent(JSON.stringify(finalStagedVertices))}`;
                 window.open(pathUrl, '_blank');
             } else if (previewTargetMode === 'record') {
-                payload.path = recordedKeyframes;
+                payload.path = finalRecordedKeyframes;
 
                 // Calculate centroid of the recorded keyframes
                 let sumLat = 0;
                 let sumLon = 0;
-                for (let kf of recordedKeyframes) {
+                for (let kf of finalRecordedKeyframes) {
                     sumLat += kf.lat;
                     sumLon += kf.lon;
                 }
-                payload.lat = sumLat / recordedKeyframes.length;
-                payload.lon = sumLon / recordedKeyframes.length;
+                payload.lat = sumLat / finalRecordedKeyframes.length;
+                payload.lon = sumLon / finalRecordedKeyframes.length;
 
                 // Merge camera parameters
                 Object.assign(payload, cameraParams);
@@ -2407,7 +2411,7 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
                 }).catch(err => console.warn("Record mode webhook dispatch failed:", err));
 
                 // Immediately open viewer.html and show simulation active overlay
-                const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(payload.location)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&session_id=${encodeURIComponent(sessionId)}&target_mode=${encodeURIComponent(previewTargetMode)}&path=${encodeURIComponent(JSON.stringify(recordedKeyframes))}`;
+                const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(payload.location)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&session_id=${encodeURIComponent(sessionId)}&target_mode=${encodeURIComponent(previewTargetMode)}&path=${encodeURIComponent(JSON.stringify(finalRecordedKeyframes))}`;
                 window.open(pathUrl, '_blank');
 
                 showOverlay(`
