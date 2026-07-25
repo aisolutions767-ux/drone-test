@@ -676,7 +676,10 @@
             <div class="form-group">
                 <label for="address-input">Search Target Address</label>
                 <div class="input-wrapper">
-                    <input type="text" id="address-input" placeholder="e.g. Space Needle, Seattle" autocomplete="off">
+                    <input type="text" id="address-input" placeholder="e.g. Space Needle, Seattle" autocomplete="off" style="padding-right: 48px;">
+                    <button id="locate-me-btn" title="Target My Current Location" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: transparent; border: none; color: var(--accent-cyan); cursor: pointer; display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; transition: all 0.2s ease; z-index: 10;">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="22" x2="18" y1="12" y2="12"/><line x1="6" x2="2" y1="12" y2="12"/><line x1="12" x2="12" y1="6" y2="2"/><line x1="12" x2="12" y1="22" y2="18"/></svg>
+                    </button>
                     <div id="autocomplete-list" class="autocomplete-dropdown"></div>
                 </div>
             </div>
@@ -1039,6 +1042,72 @@
                 console.error("Reverse geocoding error:", e);
             }
         }
+
+        // Locate Me Button Handler
+        const locateMeBtn = document.getElementById('locate-me-btn');
+        locateMeBtn.addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                alert("Geolocation is not supported by your browser.");
+                return;
+            }
+
+            locateMeBtn.style.color = "#94a3b8"; // indicator for loading
+            locateMeBtn.disabled = true;
+
+            navigator.geolocation.getCurrentPosition(
+                async (position) => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    
+                    console.log("Current user location retrieved:", lat, lon);
+
+                    // Update input fields
+                    latInput.value = lat.toFixed(6);
+                    lonInput.value = lon.toFixed(6);
+
+                    // Relocate Map Pin and flight path circle
+                    const latlng = L.latLng(lat, lon);
+                    marker.setLatLng(latlng);
+                    orbitCircle.setLatLng(latlng);
+                    centerDot.setLatLng(latlng);
+                    map.setView(latlng, 15);
+
+                    // Perform reverse geocoding to retrieve friendly name
+                    try {
+                        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`);
+                        if (response.ok) {
+                            const data = await response.json();
+                            // Take the first three comma-separated elements of the address
+                            const friendlyName = data.display_name.split(',').slice(0, 3).join(',');
+                            addressInput.value = friendlyName || "My Current Location";
+                        } else {
+                            addressInput.value = "My Current Location";
+                        }
+                    } catch (e) {
+                        console.warn("Reverse geocoding failed:", e);
+                        addressInput.value = "My Current Location";
+                    }
+
+                    // Trigger live preview refresh
+                    if (previewViewer) {
+                        stagedClickedLat = lat;
+                        stagedClickedLon = lon;
+                        updatePreviewCameraToPoint(lat, lon, stagedTargetAltitude);
+                        updateStagingMarkerIn3D(Cesium.Cartesian3.fromDegrees(lon, lat, stagedTargetAltitude));
+                    }
+
+                    locateMeBtn.style.color = "var(--accent-cyan)";
+                    locateMeBtn.disabled = false;
+                },
+                (error) => {
+                    console.error("Geolocation failed:", error);
+                    alert(`Could not retrieve your location: ${error.message}`);
+                    locateMeBtn.style.color = "var(--accent-cyan)";
+                    locateMeBtn.disabled = false;
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        });
 
         // Autocomplete
         addressInput.addEventListener('input', function() {
