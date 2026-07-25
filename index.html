@@ -1288,6 +1288,7 @@
             const pitch = Cesium.Math.toRadians(pitchDeg);
 
             previewViewer.camera.lookAt(targetCenter, new Cesium.HeadingPitchRange(heading, pitch, range));
+            previewViewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
         }
 
         // Draw a glowing pinpoint marker entity at the clicked target location inside the 3D scene
@@ -1330,6 +1331,7 @@
             
             const targetCenter = Cesium.Cartesian3.fromDegrees(lon, lat, targetAlt);
             previewViewer.camera.lookAt(targetCenter, new Cesium.HeadingPitchRange(heading, pitch, range));
+            previewViewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
         }
 
         // Draw and update dynamic polygon (area) or polyline (path) inside the Cesium scene
@@ -2394,6 +2396,35 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
 
             // Close the preview loop first
             closeLivePreview();
+
+            if (previewTargetMode === 'record') {
+                console.log("Record Mode: Fire-and-forget trigger to webhook:", targetUrl);
+                // POST payload to webhook in background
+                fetch(targetUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                }).catch(err => console.warn("Record mode webhook dispatch failed:", err));
+
+                // Immediately open viewer.html and show simulation active overlay
+                const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(payload.location)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&session_id=${encodeURIComponent(sessionId)}&target_mode=${encodeURIComponent(previewTargetMode)}&path=${encodeURIComponent(JSON.stringify(recordedKeyframes))}`;
+                window.open(pathUrl, '_blank');
+
+                showOverlay(`
+                    <div class="success-icon" style="background: var(--accent-cyan); color: #060913; width: 60px; height: 60px; font-size: 32px; display: flex; align-items: center; justify-content: center; border-radius: 50%; margin: 0 auto 20px;">✓</div>
+                    <div class="status-title" style="color: var(--accent-cyan); font-size: 24px; font-weight: 700; margin-bottom: 12px;">Simulation Active</div>
+                    <div class="status-message" style="margin-bottom: 20px; line-height: 1.6; color: #cbd5e1; font-size: 14px;">
+                        Your recorded 3D flight trajectory has been successfully dispatched to the AI webhook.
+                        <br><br>
+                        The interactive 3D simulation has been opened in a new tab!
+                    </div>
+                    <div style="display: flex; gap: 10px; justify-content: center; margin-bottom: 15px;">
+                        <a href="${pathUrl}" target="_blank" class="close-btn" style="text-decoration: none; display: inline-block; background: var(--accent-cyan); color: #060913; font-weight: 600; padding: 10px 20px; border-radius: 6px; border: none; cursor: pointer; transition: all 0.2s; font-size: 13px;">Open Simulation</a>
+                    </div>
+                    <button class="close-btn" style="background: transparent; color: #94a3b8; border: none; font-size: 13px; text-decoration: underline; cursor: pointer;" onclick="hideOverlay()">Return to Control Station</button>
+                `);
+                return;
+            }
 
             // Clone payload and truncate screenshot data for clean UI layout log display
             const displayPayload = { ...payload };
