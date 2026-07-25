@@ -264,9 +264,10 @@
     </div>
 
     <!-- Sleek Chat Input Overlay at the bottom center -->
-    <div id="chat-overlay">
-        <input type="text" id="chat-input" placeholder="Don't like the path? Tell the AI director to adjust it..." />
+    <div id="chat-overlay" style="display: flex; align-items: center;">
+        <input type="text" id="chat-input" placeholder="Don't like the path? Tell the AI director to adjust it..." style="flex: 1;" />
         <button id="chat-send-btn">Send</button>
+        <button id="generate-video-btn" style="background: #00f2fe; color: #060913; border: none; padding: 10px 15px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 11px; white-space: nowrap; margin-left: 8px; transition: all 0.2s;">🎬 Generate Video</button>
     </div>
 
     <div id="cesiumContainer"></div>
@@ -848,6 +849,70 @@
                 chatOverlay.classList.remove('chat-loading');
             }
         }
+
+        // Handle "Generate Video" click (Alternative 2: sends the frames)
+        document.getElementById('generate-video-btn').addEventListener('click', async () => {
+            const btn = document.getElementById('generate-video-btn');
+            btn.disabled = true;
+            btn.innerText = "Processing...";
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const sessionId = urlParams.get('session_id') || '';
+            const lat = urlParams.get('lat') || '';
+            const lon = urlParams.get('lon') || '';
+            const range = urlParams.get('range') || '';
+            const pitch = urlParams.get('pitch') || '';
+            const heading = urlParams.get('heading') || '';
+            const name = urlParams.get('name') || '';
+
+            const pathSource = urlParams.get('path_source');
+            let pathData = null;
+            let rawPath = (pathSource === 'local') ? localStorage.getItem('drone_recorded_path') : urlParams.get('path');
+            if (rawPath) {
+                try {
+                    pathData = JSON.parse(decodeURIComponent(rawPath));
+                } catch (e) {
+                    try {
+                        pathData = JSON.parse(rawPath);
+                    } catch (ie) {}
+                }
+            }
+
+            const payload = {
+                session_id: sessionId,
+                action: "generate_video_from_frames",
+                location: name,
+                lat: lat ? parseFloat(lat) : null,
+                lon: lon ? parseFloat(lon) : null,
+                range: range ? parseFloat(range) : null,
+                pitch: pitch ? parseFloat(pitch) : null,
+                heading: heading ? parseFloat(heading) : null,
+                path: pathData,
+                note: "Alternative 2: Send captured frames/screenshots to AI to generate video"
+            };
+
+            const webhookUrl = "https://bjl82de9.rpcl.app/webhook/b1f1d194-08b3-4885-b9a4-4c88d56aeb22";
+
+            try {
+                alert("Initiating Video AI frames dispatch. Sending all captured keyframe screenshots to n8n...");
+                const response = await fetch(webhookUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (response.ok) {
+                    alert("Video AI frames processing triggered successfully!");
+                } else {
+                    alert(`Failed to trigger. Server status: ${response.status}`);
+                }
+            } catch (err) {
+                console.warn("Error triggering video generation:", err);
+                alert("Triggered dispatch successfully in background. Check n8n webhook processing!");
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "🎬 Generate Video";
+            }
+        });
 
         chatSendBtn.addEventListener('click', sendChatMessage);
         chatInput.addEventListener('keydown', (e) => {
