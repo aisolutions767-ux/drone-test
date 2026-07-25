@@ -621,8 +621,15 @@
             for (let segIdx = 0; segIdx < nSegs; segIdx++) {
                 const p1 = pathPts[segIdx];
                 const p2 = pathPts[segIdx + 1];
-                const bearing = headingBetween(p1.lat, p1.lon, p2.lat, p2.lon);
+                
+                // Determine if waypoints have custom orientations (from 3D Recorder)
+                const hasCustomHeights = p1.height !== undefined && p2.height !== undefined;
+                const hasCustomHeadings = p1.heading !== undefined && p2.heading !== undefined;
+                const hasCustomPitches = p1.pitch !== undefined && p2.pitch !== undefined;
+                const hasCustomRolls = p1.roll !== undefined && p2.roll !== undefined;
 
+                // Fallback bearing calculation
+                const bearing = headingBetween(p1.lat, p1.lon, p2.lat, p2.lon);
                 let nextBearing = bearing;
                 if (segIdx + 2 < pathPts.length) {
                     const p3 = pathPts[segIdx + 2];
@@ -631,12 +638,23 @@
 
                 for (let f = 0; f < framesPerSeg; f++) {
                     const t = f / framesPerSeg;
+                    
+                    const interpolatedLat = p1.lat + (p2.lat - p1.lat) * t;
+                    const interpolatedLon = p1.lon + (p2.lon - p1.lon) * t;
+                    const interpolatedHeight = hasCustomHeights ? p1.height + (p2.height - p1.height) * t : null;
+                    const interpolatedHeading = hasCustomHeadings ? lerpHeading(p1.heading, p2.heading, t) : lerpHeading(bearing, nextBearing, t);
+                    const interpolatedPitch = hasCustomPitches ? p1.pitch + (p2.pitch - p1.pitch) * t : pitch;
+                    const interpolatedRoll = hasCustomRolls ? p1.roll + (p2.roll - p1.roll) * t : 0;
+
                     frameList.push({
-                        lat: p1.lat + (p2.lat - p1.lat) * t,
-                        lon: p1.lon + (p2.lon - p1.lon) * t,
+                        lat: interpolatedLat,
+                        lon: interpolatedLon,
+                        height: interpolatedHeight,
                         range: range,
-                        pitch: pitch,
-                        heading: lerpHeading(bearing, nextBearing, t)
+                        pitch: interpolatedPitch,
+                        heading: interpolatedHeading,
+                        roll: interpolatedRoll,
+                        is_recorded_flight: hasCustomHeights
                     });
                 }
             }
@@ -657,15 +675,28 @@
                 }
                 
                 const cam = frameList[currentFrame];
-                // Move camera to look at the waypoint center (altitude 25m)
-                const center = Cesium.Cartesian3.fromDegrees(cam.lon, cam.lat, 25);
-                const heading = Cesium.Math.toRadians(cam.heading);
-                const pitchRad = Cesium.Math.toRadians(cam.pitch);
                 
-                viewer.camera.lookAt(center, new Cesium.HeadingPitchRange(heading, pitchRad, cam.range));
-                viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
-
-                updateHUD(cam.lat, cam.lon, cam.range, cam.heading, cam.pitch, `FLIGHT FRAME ${currentFrame}/${frames}`);
+                if (cam.is_recorded_flight) {
+                    // Set camera position and orientation directly for manual keyframe paths
+                    viewer.camera.setView({
+                        destination: Cesium.Cartesian3.fromDegrees(cam.lon, cam.lat, cam.height),
+                        orientation: {
+                            heading: Cesium.Math.toRadians(cam.heading),
+                            pitch: Cesium.Math.toRadians(cam.pitch),
+                            roll: Cesium.Math.toRadians(cam.roll)
+                        }
+                    });
+                    updateHUD(cam.lat, cam.lon, cam.height, cam.heading, cam.pitch, `FLIGHT FRAME ${currentFrame}/${frames}`);
+                } else {
+                    // Move camera to look at the waypoint center (altitude 25m) for standard ground path paths
+                    const center = Cesium.Cartesian3.fromDegrees(cam.lon, cam.lat, 25);
+                    const heading = Cesium.Math.toRadians(cam.heading);
+                    const pitchRad = Cesium.Math.toRadians(cam.pitch);
+                    
+                    viewer.camera.lookAt(center, new Cesium.HeadingPitchRange(heading, pitchRad, cam.range));
+                    viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+                    updateHUD(cam.lat, cam.lon, cam.range, cam.heading, cam.pitch, `FLIGHT FRAME ${currentFrame}/${frames}`);
+                }
                 
                 currentFrame++;
                 requestAnimationFrame(animate);
@@ -735,6 +766,8 @@
             let webhookUrl = "https://bjl82de9.rpcl.app/webhook/09998941-d181-4470-9cbb-51fa22e0dfac";
             if (targetMode === 'area') {
                 webhookUrl = "https://bjl82de9.rpcl.app/webhook/09998941-d181-4470-9cbb-51fa22e0dfac3d";
+            } else if (targetMode === 'record') {
+                webhookUrl = "https://bjl82de9.rpcl.app/webhook/b1f1d194-08b3-4885-b9a4-4c88d56aeb22";
             }
 
             // Configure 60-second AbortController timeout
