@@ -929,7 +929,10 @@
             };
 
             logToTerminal("Connecting to local virtual drone AI engine...");
-            const serverUrl = window.location.origin + "/generate_video_ai";
+            let serverUrl = window.location.origin + "/generate_video_ai";
+            if (window.location.protocol === 'file:') {
+                serverUrl = "http://localhost:8766/generate_video_ai";
+            }
 
             try {
                 const response = await fetch(serverUrl, {
