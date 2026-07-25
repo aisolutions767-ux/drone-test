@@ -292,8 +292,29 @@
 
         const ionToken = urlParams.get('token') || defaultIonToken;
         const googleKey = urlParams.get('googleKey') || defaultGoogleKey;
-        const defaultLat = parseFloat(urlParams.get('lat')) || 37.7749;
-        const defaultLon = parseFloat(urlParams.get('lon')) || -122.4194;
+        let defaultLat = parseFloat(urlParams.get('lat'));
+        let defaultLon = parseFloat(urlParams.get('lon'));
+        
+        // If lat/lon are missing, try reading them from the path payload
+        if (isNaN(defaultLat) || isNaN(defaultLon)) {
+            const pathStr = urlParams.get('path');
+            if (pathStr) {
+                try {
+                    const pts = JSON.parse(decodeURIComponent(pathStr));
+                    if (pts && pts.length > 0) {
+                        defaultLat = parseFloat(pts[0].lat);
+                        defaultLon = parseFloat(pts[0].lon);
+                    }
+                } catch (e) {
+                    console.warn("Could not read initial lat/lon from path:", e);
+                }
+            }
+        }
+        
+        // Final fallback
+        if (isNaN(defaultLat)) defaultLat = 37.7749;
+        if (isNaN(defaultLon)) defaultLon = -122.4194;
+
         const targetName = urlParams.get('name') || "Default Target";
 
         // Set token
@@ -543,8 +564,12 @@
             try {
                 pathPts = JSON.parse(decodeURIComponent(pathStr));
             } catch (e) {
-                console.error("Failed to parse path query parameter:", e);
-                return;
+                try {
+                    pathPts = JSON.parse(pathStr);
+                } catch (innerError) {
+                    console.error("Failed to parse path query parameter:", innerError);
+                    return;
+                }
             }
             if (pathPts.length === 0) return;
 
