@@ -2121,7 +2121,7 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
                 Object.assign(payload, cameraParams);
                 
                 // Open viewer.html in a new tab with the path payload (simulation)
-                const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(payload.location)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&session_id=${encodeURIComponent(sessionId)}&path=${encodeURIComponent(JSON.stringify(stagedVerticesList))}`;
+                const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(payload.location)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&session_id=${encodeURIComponent(sessionId)}&target_mode=${encodeURIComponent(previewTargetMode)}&path=${encodeURIComponent(JSON.stringify(stagedVerticesList))}`;
                 window.open(pathUrl, '_blank');
             }
 
@@ -2238,7 +2238,7 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
                         const rangeVal = result.range || parseInt(pRangeSlider.value);
                         const pitchVal = result.pitch || parseInt(pPitchSlider.value);
                         const locName = result.location || addressInput.value.trim() || 'Selected Coordinates';
-                        const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(locName)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&session_id=${encodeURIComponent(sessionId)}&path=${encodeURIComponent(JSON.stringify(result.path))}`;
+                        const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(locName)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&session_id=${encodeURIComponent(sessionId)}&target_mode=${encodeURIComponent(result.mode || previewTargetMode)}&path=${encodeURIComponent(JSON.stringify(result.path))}`;
                         window.open(pathUrl, '_blank');
                         
                         showOverlay(`
