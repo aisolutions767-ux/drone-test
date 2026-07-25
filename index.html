@@ -761,6 +761,31 @@
     <div class="preview-overlay" id="preview-overlay">
         <div id="previewCesiumContainer"></div>
         
+        <!-- Floating 3D Flight Recorder Panel -->
+        <div id="recorder-panel" style="display: none; position: absolute; top: 20px; left: 20px; z-index: 1000; background: rgba(6, 9, 19, 0.85); backdrop-filter: blur(10px); border: 1px solid var(--border-color); border-radius: 12px; padding: 15px; width: 260px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5); font-family: inherit;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                <span class="pulse-dot" style="background-color: #ff3f3f; box-shadow: 0 0 8px #ff3f3f; width: 10px; height: 10px;"></span>
+                <span style="font-weight: 800; font-size: 13px; color: #ff3f3f; letter-spacing: 1px;">3D FLIGHT RECORDER</span>
+            </div>
+            <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.4; margin-bottom: 15px;">
+                Fly using mouse/keyboard. Position camera, then press <strong style="color: var(--accent-cyan);">Ctrl + M</strong> to capture a keyframe.
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; margin-bottom: 15px; background: rgba(15, 23, 42, 0.5); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                <span style="color: #cbd5e1;">Recorded Frames:</span>
+                <span id="recorded-count" style="color: var(--accent-cyan);">0</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <button id="recorder-add-btn" style="background: var(--accent-cyan); color: #060913; border: none; padding: 10px; border-radius: 6px; font-weight: bold; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s;">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+                    Capture View (Ctrl+M)
+                </button>
+                <div style="display: flex; gap: 8px;">
+                    <button id="recorder-undo-btn" style="flex: 1; background: rgba(255,255,255,0.08); color: #fff; border: 1px solid rgba(255,255,255,0.1); padding: 8px; border-radius: 6px; font-size: 11px; cursor: pointer; transition: all 0.2s;">Undo</button>
+                    <button id="recorder-clear-btn" style="flex: 1; background: rgba(255,63,63,0.15); color: #ff3f3f; border: 1px solid rgba(255,63,63,0.2); padding: 8px; border-radius: 6px; font-size: 11px; cursor: pointer; transition: all 0.2s;">Clear All</button>
+                </div>
+            </div>
+        </div>
+        
         <!-- Live Staging Telemetry Controller in Preview Sidebar -->
         <div class="preview-sidebar">
             <div>
@@ -773,10 +798,11 @@
             <!-- Target Selection Mode Tab Controller -->
             <div class="form-group">
                 <label>Drone Targeting Mode</label>
-                <div style="display: flex; gap: 5px; background: rgba(15, 23, 42, 0.6); padding: 5px; border-radius: 10px; border: 1px solid var(--border-color);">
-                    <button id="mode-single-btn" class="mode-tab active" style="flex:1; padding: 8px; font-size: 11px; border:none; border-radius: 6px; cursor:pointer; background: var(--accent-cyan); color:#060913; font-weight:bold; transition:all 0.2s ease;">📌 Single</button>
-                    <button id="mode-area-btn" class="mode-tab" style="flex:1; padding: 8px; font-size: 11px; border:none; border-radius: 6px; cursor:pointer; background: transparent; color:#fff; font-weight:bold; transition:all 0.2s ease;">📐 Area</button>
-                    <button id="mode-path-btn" class="mode-tab" style="flex:1; padding: 8px; font-size: 11px; border:none; border-radius: 6px; cursor:pointer; background: transparent; color:#fff; font-weight:bold; transition:all 0.2s ease;">📍 Path</button>
+                <div style="display: flex; gap: 5px; background: rgba(15, 23, 42, 0.6); padding: 5px; border-radius: 10px; border: 1px solid var(--border-color); flex-wrap: wrap;">
+                    <button id="mode-single-btn" class="mode-tab active" style="flex:1; min-width: 70px; padding: 8px; font-size: 11px; border:none; border-radius: 6px; cursor:pointer; background: var(--accent-cyan); color:#060913; font-weight:bold; transition:all 0.2s ease;">📌 Single</button>
+                    <button id="mode-area-btn" class="mode-tab" style="flex:1; min-width: 70px; padding: 8px; font-size: 11px; border:none; border-radius: 6px; cursor:pointer; background: transparent; color:#fff; font-weight:bold; transition:all 0.2s ease;">📐 Area</button>
+                    <button id="mode-path-btn" class="mode-tab" style="flex:1; min-width: 70px; padding: 8px; font-size: 11px; border:none; border-radius: 6px; cursor:pointer; background: transparent; color:#fff; font-weight:bold; transition:all 0.2s ease;">📍 Path</button>
+                    <button id="mode-record-btn" class="mode-tab" style="flex:1; min-width: 70px; padding: 8px; font-size: 11px; border:none; border-radius: 6px; cursor:pointer; background: transparent; color:#fff; font-weight:bold; transition:all 0.2s ease;">🎥 3D Record</button>
                 </div>
             </div>
 
@@ -890,13 +916,17 @@
         let previewClickEventHandler = null;
 
         // Custom 3D drawing area and waypoint path state variables
-        let previewTargetMode = 'single'; // 'single' | 'area' | 'path'
+        let previewTargetMode = 'single'; // 'single' | 'area' | 'path' | 'record'
         let stagedDrawingPoints = [];     // Array of Cartesian3 vertices
         let stagedVerticesList = [];       // Array of { lat, lon, height } objects
         let drawingEntitiesList = [];      // Keep track of vertex pin entities
         let activeDynamicShapeEntity = null; // The polygon or polyline boundary shape entity
         let activeVertexIndex = null;      // Currently selected vertex index for vertical height editing
         let stagedExtrusionHeight = 50.0;  // 3D Extrusion height for Area/3D Object mode
+
+        // 3D Flight Recorder State Variables
+        let recordedKeyframes = [];       // Array of keyframes: { lat, lon, height, heading, pitch, roll }
+        let recorderVisualEntities = [];  // List of Cesium Entities drawn for keyframes/path representation
 
         // Form elements
         const addressInput = document.getElementById('address-input');
@@ -1349,6 +1379,7 @@
 
         // Clear all active custom drawings (vertices, polygons, polylines)
         function clearDrawing() {
+            clearRecordedKeyframes();
             if (previewViewer) {
                 // Remove vertex pins
                 drawingEntitiesList.forEach(entity => {
@@ -1441,7 +1472,7 @@
             }
 
             // Update tab button styles
-            const tabs = ['single', 'area', 'path'];
+            const tabs = ['single', 'area', 'path', 'record'];
             tabs.forEach(t => {
                 const btn = document.getElementById(`mode-${t}-btn`);
                 if (btn) {
@@ -1460,11 +1491,17 @@
             // Toggle drawing controls display
             const drawingControlsRow = document.getElementById('drawing-controls-row');
             if (drawingControlsRow) {
-                drawingControlsRow.style.display = (mode === 'single') ? 'none' : 'flex';
+                drawingControlsRow.style.display = (mode === 'single' || mode === 'record') ? 'none' : 'flex';
             }
 
             // Toggle Extrusion height controls (only shown in Area/3D Object mode)
             pAreaExtrusionGroup.style.display = (mode === 'area') ? 'block' : 'none';
+
+            // Toggle 3D recorder panel
+            const recorderPanel = document.getElementById('recorder-panel');
+            if (recorderPanel) {
+                recorderPanel.style.display = (mode === 'record') ? 'block' : 'none';
+            }
 
             // Update instructions text based on mode
             const promptText = document.getElementById('preview-prompt-text');
@@ -1475,6 +1512,8 @@
                     promptText.innerHTML = `📐 <strong>3D Object/Area Mode:</strong> Click 3 or more points on rooftops to define a boundary. Adjust the **Extrusion Height** below to lift it into a 3D volumetric prism enclosing target structures.`;
                 } else if (mode === 'path') {
                     promptText.innerHTML = `📍 <strong>3D Waypoint Path Mode:</strong> Click multiple points in sequence to define a flight path. Select waypoints directly in 3D to edit their individual altitudes vertically.`;
+                } else if (mode === 'record') {
+                    promptText.innerHTML = `🎥 <strong>3D Flight Recorder Mode:</strong> Fly around the 3D map using your mouse/keyboard. Position your camera view exactly how you want the drone shot to look at that point, then press <strong>Ctrl + M</strong> (or click the floating 3D panel button) to capture a 3D keyframe!`;
                 }
             }
         }
@@ -1998,6 +2037,158 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
             `);
         }
 
+        // ==========================================
+        // 3D FLIGHT RECORDER LOGIC & VISUALIZATION
+        // ==========================================
+
+        function updateRecorderVisuals() {
+            if (!previewViewer) return;
+
+            // Remove existing visual entities
+            for (let ent of recorderVisualEntities) {
+                previewViewer.entities.remove(ent);
+            }
+            recorderVisualEntities = [];
+
+            if (recordedKeyframes.length === 0) {
+                document.getElementById('recorded-count').innerText = "0";
+                return;
+            }
+
+            document.getElementById('recorded-count').innerText = recordedKeyframes.length;
+
+            const positions = [];
+
+            // Draw a marker for each keyframe and a direction pointer in camera direction
+            recordedKeyframes.forEach((kf, idx) => {
+                const cartesian = Cesium.Cartesian3.fromDegrees(kf.lon, kf.lat, kf.height);
+                positions.push(cartesian);
+
+                // Add glowing sphere waypoint marker
+                const marker = previewViewer.entities.add({
+                    position: cartesian,
+                    point: {
+                        pixelSize: 12,
+                        color: Cesium.Color.fromCssString('#00f2fe'),
+                        outlineColor: Cesium.Color.WHITE,
+                        outlineWidth: 2,
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY
+                    },
+                    label: {
+                        text: `Keyframe ${idx + 1}`,
+                        font: '10px sans-serif',
+                        fillColor: Cesium.Color.WHITE,
+                        outlineColor: Cesium.Color.BLACK,
+                        outlineWidth: 2,
+                        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                        pixelOffset: new Cesium.Cartesian2(0, -15),
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY
+                    }
+                });
+                recorderVisualEntities.push(marker);
+
+                // Add camera direction visual pointer (dash-line representing view heading)
+                try {
+                    const headingRad = Cesium.Math.toRadians(kf.heading);
+                    const pitchRad = Cesium.Math.toRadians(kf.pitch);
+                    
+                    const lookVector = new Cesium.Cartesian3(
+                        Math.cos(pitchRad) * Math.sin(headingRad),
+                        Math.cos(pitchRad) * Math.cos(headingRad),
+                        Math.sin(pitchRad)
+                    );
+                    
+                    const targetPosition = Cesium.Cartesian3.add(
+                        cartesian,
+                        Cesium.Cartesian3.multiplyByScalar(lookVector, 25, new Cesium.Cartesian3()),
+                        new Cesium.Cartesian3()
+                    );
+
+                    const pointer = previewViewer.entities.add({
+                        polyline: {
+                            positions: [cartesian, targetPosition],
+                            width: 3,
+                            material: new Cesium.PolylineDashMaterialProperty({
+                                color: Cesium.Color.fromCssString('#ff007f'),
+                                dashLength: 10
+                            }),
+                            arcType: Cesium.ArcType.NONE,
+                            disableDepthTestDistance: Number.POSITIVE_INFINITY
+                        }
+                    });
+                    recorderVisualEntities.push(pointer);
+                } catch (e) {
+                    console.warn("Failed to draw camera direction vector:", e);
+                }
+            });
+
+            // Draw a polyline connecting the waypoints
+            if (positions.length > 1) {
+                const pathLine = previewViewer.entities.add({
+                    polyline: {
+                        positions: positions,
+                        width: 4,
+                        material: Cesium.Color.fromCssString('#00f2fe'),
+                        arcType: Cesium.ArcType.NONE,
+                        disableDepthTestDistance: Number.POSITIVE_INFINITY
+                    }
+                });
+                recorderVisualEntities.push(pathLine);
+            }
+        }
+
+        function captureCameraKeyframe() {
+            if (previewTargetMode !== 'record' || !previewViewer) return;
+
+            try {
+                const cam = previewViewer.camera;
+                const carto = Cesium.Cartographic.fromCartesian(cam.positionWC);
+                
+                const kf = {
+                    lat: Cesium.Math.toDegrees(carto.latitude),
+                    lon: Cesium.Math.toDegrees(carto.longitude),
+                    height: carto.height,
+                    heading: Cesium.Math.toDegrees(cam.heading),
+                    pitch: Cesium.Math.toDegrees(cam.pitch),
+                    roll: Cesium.Math.toDegrees(cam.roll)
+                };
+
+                recordedKeyframes.push(kf);
+                console.log("Recorded camera keyframe:", kf);
+                
+                // Trigger visual updates
+                updateRecorderVisuals();
+            } catch (e) {
+                console.error("Failed to capture keyframe:", e);
+            }
+        }
+
+        function undoLastKeyframe() {
+            if (recordedKeyframes.length > 0) {
+                recordedKeyframes.pop();
+                updateRecorderVisuals();
+            }
+        }
+
+        function clearRecordedKeyframes() {
+            recordedKeyframes = [];
+            updateRecorderVisuals();
+        }
+
+        // Global Keyboard Shortcut handler for Ctrl + M
+        window.addEventListener('keydown', (e) => {
+            if (previewTargetMode === 'record' && e.ctrlKey && (e.key === 'm' || e.key === 'M')) {
+                e.preventDefault(); // Prevent browser default shortcuts
+                captureCameraKeyframe();
+            }
+        });
+
+        // Bind 3D recorder panel buttons
+        document.getElementById('recorder-add-btn').addEventListener('click', captureCameraKeyframe);
+        document.getElementById('recorder-undo-btn').addEventListener('click', undoLastKeyframe);
+        document.getElementById('recorder-clear-btn').addEventListener('click', clearRecordedKeyframes);
+
         // Step 1: Open Live Preview instead of posting directly
         launchBtn.addEventListener('click', () => {
             launchLivePreview();
@@ -2009,6 +2200,7 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
         document.getElementById('mode-single-btn').addEventListener('click', () => setTargetMode('single'));
         document.getElementById('mode-area-btn').addEventListener('click', () => setTargetMode('area'));
         document.getElementById('mode-path-btn').addEventListener('click', () => setTargetMode('path'));
+        document.getElementById('mode-record-btn').addEventListener('click', () => setTargetMode('record'));
 
         // Bind Clear Drawing click listener
         document.getElementById('clear-drawing-btn').addEventListener('click', clearDrawing);
@@ -2027,6 +2219,10 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
             }
             if (previewTargetMode === 'path' && stagedVerticesList.length < 2) {
                 alert("Please click on the 3D map to select at least 2 waypoints to define a flight path.");
+                return;
+            }
+            if (previewTargetMode === 'record' && recordedKeyframes.length < 2) {
+                alert("Please record at least 2 camera keyframes (press Ctrl + M or click Capture View) to define a flight path.");
                 return;
             }
 
@@ -2123,6 +2319,21 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
                 // Open viewer.html in a new tab with the path payload (simulation)
                 const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(payload.location)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&session_id=${encodeURIComponent(sessionId)}&target_mode=${encodeURIComponent(previewTargetMode)}&path=${encodeURIComponent(JSON.stringify(stagedVerticesList))}`;
                 window.open(pathUrl, '_blank');
+            } else if (previewTargetMode === 'record') {
+                payload.path = recordedKeyframes;
+
+                // Calculate centroid of the recorded keyframes
+                let sumLat = 0;
+                let sumLon = 0;
+                for (let kf of recordedKeyframes) {
+                    sumLat += kf.lat;
+                    sumLon += kf.lon;
+                }
+                payload.lat = sumLat / recordedKeyframes.length;
+                payload.lon = sumLon / recordedKeyframes.length;
+
+                // Merge camera parameters
+                Object.assign(payload, cameraParams);
             }
 
             // Calculate 3D height metrics for Single mode
@@ -2167,12 +2378,14 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
             }
 
             // Determine target webhook URL dynamically based on the active mode (or use local backend)
-            // Pin Mode ('single') and Area Mode ('area') always query their respective n8n webhooks directly.
+            // Pin Mode ('single'), Area Mode ('area'), and 3D Record Mode ('record') always query their respective n8n webhooks directly.
             let targetUrl = "/mission";
             if (previewTargetMode === 'single') {
                 targetUrl = N8N_SINGLE_URL;
             } else if (previewTargetMode === 'area') {
                 targetUrl = N8N_AREA_URL;
+            } else if (previewTargetMode === 'record') {
+                targetUrl = "https://bjl82de9.rpcl.app/webhook/b1f1d194-08b3-4885-b9a4-4c88d56aeb22";
             } else if (!USE_LOCAL_BACKEND) {
                 targetUrl = N8N_PATH_URL;
             }
@@ -2191,7 +2404,7 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
             // Display loading overlay
             let loadingTitle = "Dispatching Drone";
             let loadingMessage = "Connecting to mission control, mapping area coordinates, and preparing flight plans...";
-            if (previewTargetMode === 'single' || previewTargetMode === 'area') {
+            if (previewTargetMode === 'single' || previewTargetMode === 'area' || previewTargetMode === 'record') {
                 loadingTitle = "Calculating Flight Path";
                 loadingMessage = "AI is analyzing telemetry and generating the optimal 3D flight path. This typically takes 10-15 seconds...";
             }
@@ -2204,8 +2417,8 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
                 <pre>${JSON.stringify(displayPayload, null, 2)}</pre>
             `);
 
-            // Trigger n8n webhook in background (fire-and-forget) if we are using the local backend (excluding single and area modes which query n8n directly)
-            if (USE_LOCAL_BACKEND && previewTargetMode !== 'single' && previewTargetMode !== 'area') {
+            // Trigger n8n webhook in background (fire-and-forget) if we are using the local backend (excluding single, area, and record modes which query n8n directly)
+            if (USE_LOCAL_BACKEND && previewTargetMode !== 'single' && previewTargetMode !== 'area' && previewTargetMode !== 'record') {
                 let n8nWebhookUrl = N8N_PATH_URL;
                 console.log("Triggering background n8n webhook (fire-and-forget):", n8nWebhookUrl);
                 fetch(n8nWebhookUrl, {
@@ -2216,7 +2429,7 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
             }
 
             const controller = new AbortController();
-            const timeoutMs = (previewTargetMode === 'single' || previewTargetMode === 'area') ? 60000 : 20000;
+            const timeoutMs = (previewTargetMode === 'single' || previewTargetMode === 'area' || previewTargetMode === 'record') ? 60000 : 20000;
             const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
             try {
