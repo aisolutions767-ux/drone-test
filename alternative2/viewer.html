@@ -270,6 +270,27 @@
         <button id="generate-video-btn" style="background: #00f2fe; color: #060913; border: none; padding: 10px 15px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 11px; white-space: nowrap; margin-left: 8px; transition: all 0.2s;">🎬 Generate Video</button>
     </div>
 
+    <!-- Live Console Output Overlay -->
+    <div id="terminal-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(6, 9, 19, 0.96); z-index: 10000; display: none; flex-direction: column; align-items: center; justify-content: center; font-family: monospace; padding: 20px;">
+        <div style="width: 90%; max-width: 800px; background: #0c1020; border: 1px solid rgba(0, 242, 254, 0.2); border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); overflow: hidden; display: flex; flex-direction: column;">
+            <div style="background: rgba(255,255,255,0.03); padding: 12px 15px; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; gap: 6px;">
+                    <div style="width: 10px; height: 10px; border-radius: 50%; background: #ef4444;"></div>
+                    <div style="width: 10px; height: 10px; border-radius: 50%; background: #f59e0b;"></div>
+                    <div style="width: 10px; height: 10px; border-radius: 50%; background: #10b981;"></div>
+                </div>
+                <div style="color: #00f2fe; font-size: 11px; font-weight: bold; letter-spacing: 1px;">DRONE AI RENDER CONSOLE (ALT 2)</div>
+                <div style="width: 30px;"></div>
+            </div>
+            <div id="terminal-output" style="height: 350px; overflow-y: auto; padding: 15px; color: #cbd5e1; font-size: 12px; line-height: 1.6; text-align: left; background: #060913; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <div style="color: #00f2fe;">$ init_drone_ai_workflow --mode=alternative2</div>
+            </div>
+            <div style="padding: 10px 15px; background: rgba(0,0,0,0.2); display: flex; justify-content: flex-end;">
+                <button id="close-terminal-btn" style="background: #00f2fe; border: none; color: #060913; padding: 8px 16px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer; display: none;" onclick="document.getElementById('terminal-overlay').style.display='none'">Close Console</button>
+            </div>
+        </div>
+    </div>
+
     <div id="cesiumContainer"></div>
 
     <script>
@@ -850,11 +871,29 @@
             }
         }
 
-        // Handle "Generate Video" click (Alternative 2: sends the frames)
+        // Handle "Generate Video" click (Alternative 2: sends the frames to local server with live logs)
         document.getElementById('generate-video-btn').addEventListener('click', async () => {
             const btn = document.getElementById('generate-video-btn');
+            const termOverlay = document.getElementById('terminal-overlay');
+            const termOutput = document.getElementById('terminal-output');
+            const closeTermBtn = document.getElementById('close-terminal-btn');
+
             btn.disabled = true;
             btn.innerText = "Processing...";
+            
+            // Clear and show console
+            termOverlay.style.display = 'flex';
+            termOutput.innerHTML = '<div style="color: #00f2fe;">$ init_drone_ai_workflow --mode=alternative2</div>';
+            closeTermBtn.style.display = 'none';
+
+            const logToTerminal = (text, color = '#cbd5e1') => {
+                const line = document.createElement('div');
+                line.style.color = color;
+                line.style.marginTop = '4px';
+                line.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+                termOutput.appendChild(line);
+                termOutput.scrollTop = termOutput.scrollHeight;
+            };
 
             const urlParams = new URLSearchParams(window.location.search);
             const sessionId = urlParams.get('session_id') || '';
@@ -880,37 +919,81 @@
 
             const payload = {
                 session_id: sessionId,
-                action: "generate_video_from_frames",
                 location: name,
                 lat: lat ? parseFloat(lat) : null,
                 lon: lon ? parseFloat(lon) : null,
                 range: range ? parseFloat(range) : null,
                 pitch: pitch ? parseFloat(pitch) : null,
                 heading: heading ? parseFloat(heading) : null,
-                path: pathData,
-                note: "Alternative 2: Send captured frames/screenshots to AI to generate video"
+                path: pathData
             };
 
-            const webhookUrl = "https://bjl82de9.rpcl.app/webhook/b1f1d194-08b3-4885-b9a4-4c88d56aeb22";
+            logToTerminal("Connecting to local virtual drone AI engine...");
+            const serverUrl = window.location.origin + "/generate_video_ai";
 
             try {
-                alert("Initiating Video AI frames dispatch. Sending all captured keyframe screenshots to n8n...");
-                const response = await fetch(webhookUrl, {
+                const response = await fetch(serverUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
-                if (response.ok) {
-                    alert("Video AI frames processing triggered successfully!");
-                } else {
-                    alert(`Failed to trigger. Server status: ${response.status}`);
+
+                if (!response.ok) {
+                    throw new Error(`Server returned HTTP ${response.status}`);
                 }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = "";
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split("\n\n");
+                    buffer = lines.pop(); // keep unfinished chunk
+
+                    for (const line of lines) {
+                        if (line.startsWith("data: ")) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                if (data.status === "error") {
+                                    logToTerminal(data.message, "#ef4444");
+                                } else if (data.status === "success") {
+                                    logToTerminal(data.message, "#10b981");
+                                    // Render prompt script response in clean formatting
+                                    const resBox = document.createElement('div');
+                                    resBox.style.marginTop = '15px';
+                                    resBox.style.padding = '15px';
+                                    resBox.style.background = 'rgba(0, 242, 254, 0.05)';
+                                    resBox.style.border = '1px solid rgba(0, 242, 254, 0.2)';
+                                    resBox.style.borderRadius = '6px';
+                                    resBox.style.color = '#00f2fe';
+                                    resBox.style.whiteSpace = 'pre-wrap';
+                                    resBox.textContent = data.result;
+                                    termOutput.appendChild(resBox);
+                                    termOutput.scrollTop = termOutput.scrollHeight;
+                                } else if (data.status === "warning") {
+                                    logToTerminal(data.message, "#f59e0b");
+                                } else {
+                                    logToTerminal(data.message, "#cbd5e1");
+                                }
+                            } catch (e) {
+                                // raw line
+                                logToTerminal(line.slice(6));
+                            }
+                        }
+                    }
+                }
+                logToTerminal("Workflow completed.", "#10b981");
             } catch (err) {
-                console.warn("Error triggering video generation:", err);
-                alert("Triggered dispatch successfully in background. Check n8n webhook processing!");
+                console.error("Error reading log stream:", err);
+                logToTerminal(`Execution failed: ${err.message}`, "#ef4444");
             } finally {
                 btn.disabled = false;
                 btn.innerText = "🎬 Generate Video";
+                closeTermBtn.style.display = 'block';
             }
         });
 
