@@ -380,6 +380,86 @@ def run_mission(payload: MissionPayload):
 
 
 
+from fastapi.responses import StreamingResponse
+
+@app.post("/generate_video_ai")
+def generate_video_ai(payload: dict):
+    def event_stream():
+        yield "data: " + json.dumps({"status": "info", "message": "[Alternative 1 Server] Initializing Local Video AI workflow..."}) + "\n\n"
+        time.sleep(1)
+        
+        # 1. Locate the newest video file in the videos directory
+        videos_dir = DRONE_DIR / "videos"
+        videos = sorted(videos_dir.glob("*.mp4"), key=os.path.getmtime)
+        if not videos:
+            yield "data: " + json.dumps({"status": "error", "message": "Error: No rendered drone videos found. Please run a mission first."}) + "\n\n"
+            return
+            
+        target_video = videos[-1]
+        yield "data: " + json.dumps({"status": "info", "message": f"Successfully located latest drone video: {target_video.name}"}) + "\n\n"
+        time.sleep(1)
+        
+        gemini_key = os.getenv("GEMINI_API_KEY")
+        if not gemini_key:
+            yield "data: " + json.dumps({"status": "error", "message": "Error: GEMINI_API_KEY environment variable is not set."}) + "\n\n"
+            return
+            
+        try:
+            from google import genai
+            from google.genai import types
+            
+            yield "data: " + json.dumps({"status": "info", "message": "Connecting to Google Gemini API..."}) + "\n\n"
+            client = genai.Client(api_key=gemini_key)
+            
+            yield "data: " + json.dumps({"status": "info", "message": "Uploading video file to Gemini cloud storage..."}) + "\n\n"
+            video_upload = client.files.upload(file=str(target_video))
+            yield "data: " + json.dumps({"status": "info", "message": f"Upload complete. File reference: {video_upload.name}"}) + "\n\n"
+            
+            # Wait for processing
+            start_proc = time.time()
+            processing_timeout = 60
+            while video_upload.state.name == "PROCESSING":
+                if time.time() - start_proc > processing_timeout:
+                    yield "data: " + json.dumps({"status": "error", "message": "Error: Video processing timed out on Gemini server."}) + "\n\n"
+                    break
+                yield "data: " + json.dumps({"status": "info", "message": f"Gemini is indexing video... state: {video_upload.state.name}"}) + "\n\n"
+                time.sleep(3)
+                video_upload = client.files.get(name=video_upload.name)
+                
+            if video_upload.state.name == "ACTIVE":
+                yield "data: " + json.dumps({"status": "info", "message": "Video indexing complete. Generating cinematic recommendations..."}) + "\n\n"
+                
+                prompt = (
+                    "You are an expert cinematic drone pilot and director. Watch this drone flight video.\n"
+                    "Evaluate the camera motion, smoothness, framing of the target, and lighting.\n"
+                    "Provide 3 specific professional recommendations to improve the flight path or angles "
+                    "to make the next take look like a premium hollywood movie drone shot.\n"
+                    "Be direct, structured, and constructive."
+                )
+                
+                response = client.models.generate_content(
+                    model="gemini-2.0-flash",
+                    contents=[video_upload, prompt]
+                )
+                
+                yield "data: " + json.dumps({
+                    "status": "success",
+                    "message": "AI Cinematic Analysis Completed successfully!",
+                    "result": response.text.strip()
+                }) + "\n\n"
+            else:
+                yield "data: " + json.dumps({"status": "error", "message": f"Error: Video upload state invalid ({video_upload.state.name})."}) + "\n\n"
+                
+            # Cleanup
+            client.files.delete(name=video_upload.name)
+            yield "data: " + json.dumps({"status": "info", "message": "Cleaned up temporary video asset from Gemini storage."}) + "\n\n"
+            
+        except Exception as e:
+            yield "data: " + json.dumps({"status": "error", "message": f"Processing exception occurred: {str(e)}"}) + "\n\n"
+            
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
 @app.get("/")
 def serve_index():
     return FileResponse(DRONE_DIR / "index.html")
