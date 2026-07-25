@@ -851,6 +851,13 @@
         // Toggle to true to bypass cloud n8n and run everything 100% locally
         const USE_LOCAL_BACKEND = false;
 
+        // Generate unique session ID for stateful chat memory
+        function generateSessionId() {
+            return 'sess_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
+        }
+        const sessionId = generateSessionId();
+        console.log("Initialized target control station with unique Session ID:", sessionId);
+
         // Webhook configurations for each flight mode
         const N8N_SINGLE_URL  = 'https://bjl82de9.rpcl.app/webhook/86f10356-6bfb-4f34-b31a-60dc4499c4ff';
         const N8N_AREA_URL    = 'https://bjl82de9.rpcl.app/webhook/03ad63cd-9692-4a42-9781-55c9e5f214c7';
@@ -1983,6 +1990,7 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
             }
 
             const payload = {
+                session_id: sessionId,
                 location: addressInput.value.trim() || 'Selected Coordinates',
                 mode: previewTargetMode,
                 orbit: orbitSwitch.checked,
@@ -2044,7 +2052,7 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
                 Object.assign(payload, cameraParams);
                 
                 // Open viewer.html in a new tab with the path payload (simulation)
-                const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(payload.location)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&path=${encodeURIComponent(JSON.stringify(stagedVerticesList))}`;
+                const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(payload.location)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&session_id=${encodeURIComponent(sessionId)}&path=${encodeURIComponent(JSON.stringify(stagedVerticesList))}`;
                 window.open(pathUrl, '_blank');
             }
 
@@ -2161,7 +2169,7 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
                         const rangeVal = result.range || parseInt(pRangeSlider.value);
                         const pitchVal = result.pitch || parseInt(pPitchSlider.value);
                         const locName = result.location || addressInput.value.trim() || 'Selected Coordinates';
-                        const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(locName)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&path=${encodeURIComponent(JSON.stringify(result.path))}`;
+                        const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(locName)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&session_id=${encodeURIComponent(sessionId)}&path=${encodeURIComponent(JSON.stringify(result.path))}`;
                         window.open(pathUrl, '_blank');
                         
                         showOverlay(`
