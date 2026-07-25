@@ -387,146 +387,234 @@ from fastapi.responses import StreamingResponse
 @app.post("/generate_video_ai")
 def generate_video_ai(payload: dict):
     def event_stream():
-        yield "data: " + json.dumps({"status": "info", "message": "[Alternative 1 Server] Initializing Local Video AI workflow..."}) + "\n\n"
-        time.sleep(0.5)
-        
-        # 1. Locate the newest video file — check local videos/, then parent drone/videos/
-        videos_dir = DRONE_DIR / "videos"
-        parent_videos_dir = DRONE_DIR.parent / "videos"
-        
-        videos = sorted(videos_dir.glob("*.mp4"), key=os.path.getmtime) if videos_dir.exists() else []
-        if not videos and parent_videos_dir.exists():
-            yield "data: " + json.dumps({"status": "info", "message": "No local videos found. Checking parent drone/videos/ directory..."}) + "\n\n"
-            videos = sorted(parent_videos_dir.glob("*.mp4"), key=os.path.getmtime)
-        
-        # 2. If still no videos, render one on-the-fly from the path data
-        if not videos:
-            yield "data: " + json.dumps({"status": "info", "message": "No pre-rendered videos found. Rendering video from flight path data..."}) + "\n\n"
-            
-            path_data = payload.get("path")
-            location = payload.get("location", "Unknown")
-            lat = payload.get("lat", 41.0)
-            lon = payload.get("lon", 29.0)
-            cam_range = payload.get("range", 350)
-            pitch = payload.get("pitch", -25)
-            heading = payload.get("heading", 45)
-            
-            render_script = DRONE_DIR / "drone_render_video.py"
-            if not render_script.exists():
-                render_script = DRONE_DIR.parent / "drone_render_video.py"
-                
-            if not render_script.exists():
-                yield "data: " + json.dumps({"status": "error", "message": "Error: drone_render_video.py not found. Cannot render video."}) + "\n\n"
+        yield "data: " + json.dumps({"status": "info", "message": "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"}) + "\n\n"
+        yield "data: " + json.dumps({"status": "info", "message": "🎬 [ALTERNATIVE 1] Full Video AI Pipeline"}) + "\n\n"
+        yield "data: " + json.dumps({"status": "info", "message": "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"}) + "\n\n"
+        time.sleep(0.3)
+
+        # ── STEP 1: Extract flight parameters from payload ──────────────
+        yield "data: " + json.dumps({"status": "info", "message": "📋 STEP 1/5 — Extracting flight parameters..."}) + "\n\n"
+
+        path_data = payload.get("path", [])
+        location = payload.get("location", "Unknown Location")
+        lat = payload.get("lat", 41.0)
+        lon = payload.get("lon", 29.0)
+        cam_range = payload.get("range", 350)
+        pitch = payload.get("pitch", -25)
+        heading = payload.get("heading", 45)
+        mode = payload.get("mode", "single")
+
+        # Determine render mode from path data
+        if path_data and isinstance(path_data, list) and len(path_data) > 1:
+            render_mode = "path"
+            num_frames = max(36, len(path_data) * 12)  # 12 frames per waypoint for smooth motion
+            yield "data: " + json.dumps({"status": "info", "message": f"   Mode: PATH fly-through ({len(path_data)} waypoints)"}) + "\n\n"
+            yield "data: " + json.dumps({"status": "info", "message": f"   Location: {location}"}) + "\n\n"
+            yield "data: " + json.dumps({"status": "info", "message": f"   Frames to render: {num_frames}"}) + "\n\n"
+            # Use first waypoint as start position
+            if "lat" in path_data[0]:
+                lat = path_data[0]["lat"]
+                lon = path_data[0]["lon"]
+        else:
+            render_mode = "single"
+            num_frames = 72  # Full 360° orbit
+            yield "data: " + json.dumps({"status": "info", "message": f"   Mode: SINGLE orbit (360° sweep)"}) + "\n\n"
+            yield "data: " + json.dumps({"status": "info", "message": f"   Location: {location} ({lat}, {lon})"}) + "\n\n"
+            yield "data: " + json.dumps({"status": "info", "message": f"   Frames to render: {num_frames}"}) + "\n\n"
+
+        yield "data: " + json.dumps({"status": "info", "message": f"   Camera: range={cam_range}m, pitch={pitch}°, heading={heading}°"}) + "\n\n"
+        time.sleep(0.3)
+
+        # ── STEP 2: Render full video via Playwright + OpenCV ───────────
+        yield "data: " + json.dumps({"status": "info", "message": "🎥 STEP 2/5 — Rendering drone flight video via Playwright..."}) + "\n\n"
+        yield "data: " + json.dumps({"status": "info", "message": "   Launching headless Chromium browser..."}) + "\n\n"
+        yield "data: " + json.dumps({"status": "info", "message": "   Loading Cesium 3D globe + Google Photorealistic tiles..."}) + "\n\n"
+
+        render_script = DRONE_DIR / "drone_render_video.py"
+        if not render_script.exists():
+            render_script = DRONE_DIR.parent / "drone_render_video.py"
+
+        if not render_script.exists():
+            yield "data: " + json.dumps({"status": "error", "message": "❌ Error: drone_render_video.py not found!"}) + "\n\n"
+            return
+
+        # Build render command
+        cmd = [
+            sys.executable, str(render_script),
+            "--location", str(location),
+            "--mode", render_mode,
+            "--lat", str(lat), "--lon", str(lon),
+            "--range", str(int(cam_range)),
+            "--pitch", str(int(pitch)),
+            "--heading", str(int(heading)),
+            "--frames", str(num_frames),
+            "--fps", "24"
+        ]
+
+        if render_mode == "path" and path_data:
+            # Clean path data — only keep lat/lon for the render script
+            clean_path = []
+            for pt in path_data:
+                if isinstance(pt, dict) and "lat" in pt and "lon" in pt:
+                    clean_path.append({"lat": pt["lat"], "lon": pt["lon"]})
+            if clean_path:
+                cmd.extend(["--path", json.dumps(clean_path)])
+
+        yield "data: " + json.dumps({"status": "info", "message": f"   Command: drone_render_video.py --mode {render_mode} --frames {num_frames}"}) + "\n\n"
+        yield "data: " + json.dumps({"status": "info", "message": "   ⏳ Rendering frames... (this may take 30-120 seconds)"}) + "\n\n"
+
+        try:
+            # Run render with real-time output streaming
+            render_proc = subprocess.Popen(
+                cmd, cwd=str(DRONE_DIR),
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1
+            )
+
+            output_lines = []
+            for line in iter(render_proc.stdout.readline, ""):
+                line = line.strip()
+                if line:
+                    output_lines.append(line)
+                    # Stream key progress lines to the frontend
+                    if any(kw in line.lower() for kw in ["rendered", "frame", "compiling", "video ready", "error", "warning", "loaded", "mode"]):
+                        yield "data: " + json.dumps({"status": "info", "message": f"   📸 {line}"}) + "\n\n"
+
+            render_proc.wait(timeout=300)
+
+            if render_proc.returncode != 0:
+                error_output = "\n".join(output_lines[-10:])
+                yield "data: " + json.dumps({"status": "error", "message": f"❌ Render failed (exit code {render_proc.returncode})"}) + "\n\n"
+                yield "data: " + json.dumps({"status": "error", "message": f"   Last output: {error_output[-500:]}"}) + "\n\n"
                 return
-            
-            cmd = [
-                sys.executable, str(render_script),
-                "--location", str(location),
-                "--lat", str(lat), "--lon", str(lon),
-                "--range", str(int(cam_range)),
-                "--pitch", str(int(pitch)),
-                "--heading", str(int(heading)),
-                "--frames", "36", "--fps", "24"
-            ]
-            
-            if path_data and isinstance(path_data, list):
-                cmd.extend(["--mode", "path", "--path", json.dumps(path_data)])
-            
-            yield "data: " + json.dumps({"status": "info", "message": f"Executing: drone_render_video.py --location \"{location}\" --frames 36 ..."}) + "\n\n"
-            
-            try:
-                render_result = subprocess.run(
-                    cmd, cwd=str(DRONE_DIR),
-                    capture_output=True, text=True, timeout=300
-                )
-                
-                if render_result.returncode != 0:
-                    yield "data: " + json.dumps({"status": "error", "message": f"Render failed: {render_result.stderr[-500:]}"}) + "\n\n"
-                    return
-                    
-                yield "data: " + json.dumps({"status": "info", "message": "Video rendering complete!"}) + "\n\n"
-                
-                # Re-check for new video
-                drone_video = DRONE_DIR / "drone_video.mp4"
-                if drone_video.exists():
-                    videos = [drone_video]
-                else:
-                    videos = sorted(videos_dir.glob("*.mp4"), key=os.path.getmtime) if videos_dir.exists() else []
-                    
-                if not videos:
-                    yield "data: " + json.dumps({"status": "error", "message": "Error: Video render completed but output file not found."}) + "\n\n"
-                    return
-                    
-            except subprocess.TimeoutExpired:
-                yield "data: " + json.dumps({"status": "error", "message": "Error: Video render timed out (300s)."}) + "\n\n"
-                return
-            except Exception as render_err:
-                yield "data: " + json.dumps({"status": "error", "message": f"Render exception: {str(render_err)}"}) + "\n\n"
-                return
-            
-        target_video = videos[-1]
+
+        except subprocess.TimeoutExpired:
+            render_proc.kill()
+            yield "data: " + json.dumps({"status": "error", "message": "❌ Render timed out after 300 seconds."}) + "\n\n"
+            return
+        except Exception as render_err:
+            yield "data: " + json.dumps({"status": "error", "message": f"❌ Render exception: {str(render_err)}"}) + "\n\n"
+            return
+
+        # ── STEP 3: Locate rendered video ───────────────────────────────
+        yield "data: " + json.dumps({"status": "info", "message": "📂 STEP 3/5 — Locating rendered video file..."}) + "\n\n"
+
+        # Check multiple locations for the output video
+        target_video = None
+        search_paths = [
+            DRONE_DIR / "drone_video.mp4",
+            DRONE_DIR.parent / "drone_video.mp4",
+            Path("drone_video.mp4"),
+        ]
+        # Also check videos/ subdirectories
+        for vdir in [DRONE_DIR / "videos", DRONE_DIR.parent / "videos"]:
+            if vdir.exists():
+                mp4s = sorted(vdir.glob("*.mp4"), key=os.path.getmtime)
+                if mp4s:
+                    search_paths.insert(0, mp4s[-1])
+
+        for vp in search_paths:
+            if vp.exists():
+                target_video = vp
+                break
+
+        if not target_video:
+            yield "data: " + json.dumps({"status": "error", "message": "❌ Error: Video render completed but output .mp4 not found!"}) + "\n\n"
+            return
+
         size_mb = target_video.stat().st_size / (1024 * 1024)
-        yield "data: " + json.dumps({"status": "info", "message": f"Located drone video: {target_video.name} ({size_mb:.1f} MB)"}) + "\n\n"
-        time.sleep(0.5)
-        
+        yield "data: " + json.dumps({"status": "info", "message": f"   ✅ Found: {target_video.name} ({size_mb:.1f} MB)"}) + "\n\n"
+        time.sleep(0.3)
+
+        # ── STEP 4: Upload to Gemini & Get AI Analysis ──────────────────
+        yield "data: " + json.dumps({"status": "info", "message": "🤖 STEP 4/5 — Uploading video to Google Gemini AI..."}) + "\n\n"
+
         gemini_key = os.getenv("GEMINI_API_KEY")
         if not gemini_key:
-            yield "data: " + json.dumps({"status": "error", "message": "Error: GEMINI_API_KEY environment variable is not set."}) + "\n\n"
+            yield "data: " + json.dumps({"status": "error", "message": "❌ Error: GEMINI_API_KEY not set in .env or environment."}) + "\n\n"
             return
-            
+
         try:
             from google import genai
             from google.genai import types
-            
-            yield "data: " + json.dumps({"status": "info", "message": "Connecting to Google Gemini API..."}) + "\n\n"
+
             client = genai.Client(api_key=gemini_key)
-            
-            yield "data: " + json.dumps({"status": "info", "message": "Uploading video file to Gemini cloud storage..."}) + "\n\n"
+            yield "data: " + json.dumps({"status": "info", "message": "   Connected to Gemini API."}) + "\n\n"
+
+            yield "data: " + json.dumps({"status": "info", "message": f"   Uploading {size_mb:.1f} MB video to Gemini cloud storage..."}) + "\n\n"
             video_upload = client.files.upload(file=str(target_video))
-            yield "data: " + json.dumps({"status": "info", "message": f"Upload complete. File reference: {video_upload.name}"}) + "\n\n"
-            
-            # Wait for processing
+            yield "data: " + json.dumps({"status": "info", "message": f"   Upload complete. File ref: {video_upload.name}"}) + "\n\n"
+
+            # Wait for Gemini to index the video
             start_proc = time.time()
-            processing_timeout = 60
+            processing_timeout = 120
             while video_upload.state.name == "PROCESSING":
-                if time.time() - start_proc > processing_timeout:
-                    yield "data: " + json.dumps({"status": "error", "message": "Error: Video processing timed out on Gemini server."}) + "\n\n"
+                elapsed = int(time.time() - start_proc)
+                if elapsed > processing_timeout:
+                    yield "data: " + json.dumps({"status": "error", "message": "❌ Video processing timed out on Gemini server."}) + "\n\n"
                     break
-                yield "data: " + json.dumps({"status": "info", "message": f"Gemini is indexing video... state: {video_upload.state.name}"}) + "\n\n"
+                yield "data: " + json.dumps({"status": "info", "message": f"   ⏳ Gemini indexing video... ({elapsed}s elapsed)"}) + "\n\n"
                 time.sleep(3)
                 video_upload = client.files.get(name=video_upload.name)
-                
-            if video_upload.state.name == "ACTIVE":
-                yield "data: " + json.dumps({"status": "info", "message": "Video indexing complete. Generating cinematic recommendations..."}) + "\n\n"
-                
-                prompt = (
-                    "You are an expert cinematic drone pilot and director. Watch this drone flight video.\n"
-                    "Evaluate the camera motion, smoothness, framing of the target, and lighting.\n"
-                    "Provide 3 specific professional recommendations to improve the flight path or angles "
-                    "to make the next take look like a premium hollywood movie drone shot.\n"
-                    "Be direct, structured, and constructive."
-                )
-                
-                response = client.models.generate_content(
-                    model="gemini-2.0-flash",
-                    contents=[video_upload, prompt]
-                )
-                
-                yield "data: " + json.dumps({
-                    "status": "success",
-                    "message": "AI Cinematic Analysis Completed successfully!",
-                    "result": response.text.strip()
-                }) + "\n\n"
-            else:
-                yield "data: " + json.dumps({"status": "error", "message": f"Error: Video upload state invalid ({video_upload.state.name})."}) + "\n\n"
-                
+
+            if video_upload.state.name != "ACTIVE":
+                yield "data: " + json.dumps({"status": "error", "message": f"❌ Video state invalid: {video_upload.state.name}"}) + "\n\n"
+                return
+
+            yield "data: " + json.dumps({"status": "info", "message": "   ✅ Video indexed and ready for analysis."}) + "\n\n"
+            time.sleep(0.3)
+
+            # ── STEP 5: AI Cinematic Analysis & Enhancement ─────────────
+            yield "data: " + json.dumps({"status": "info", "message": "🎬 STEP 5/5 — Generating AI cinematic analysis..."}) + "\n\n"
+            yield "data: " + json.dumps({"status": "info", "message": "   Sending to Gemini 2.0 Flash for deep video analysis..."}) + "\n\n"
+
+            prompt = (
+                "You are a world-class cinematic drone videographer and post-production director. "
+                "Watch this drone flight video carefully.\n\n"
+                "Provide a comprehensive analysis with these sections:\n\n"
+                "## 🎥 Flight Quality Assessment\n"
+                "Rate the overall smoothness, camera motion, and composition (1-10 score).\n\n"
+                "## 🔧 Specific Issues Found\n"
+                "List any jerky movements, poor framing, bad angles, or visual artifacts.\n\n"
+                "## ✨ Enhancement Recommendations\n"
+                "Provide 5 specific, actionable improvements:\n"
+                "1. Camera angle & movement improvements\n"
+                "2. Speed/pacing adjustments\n"
+                "3. Composition & framing fixes\n"
+                "4. Suggested color grading & post-production effects\n"
+                "5. Cinematic techniques to apply (dolly zoom, reveal shots, etc.)\n\n"
+                "## 🎬 AI Video Enhancement Prompt\n"
+                "Write a detailed prompt that could be fed to an AI video enhancer (like Runway, Sora, or Kling) "
+                "to transform this raw 3D simulation into a photorealistic cinematic drone shot. "
+                "Include descriptions of realistic lighting, shadows, textures, weather, "
+                "atmospheric haze, and motion blur that should be added.\n\n"
+                "Be specific, professional, and constructive."
+            )
+
+            response = client.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=[video_upload, prompt]
+            )
+
+            yield "data: " + json.dumps({
+                "status": "success",
+                "message": "✅ AI Cinematic Analysis Complete!",
+                "result": response.text.strip()
+            }) + "\n\n"
+
             # Cleanup
-            client.files.delete(name=video_upload.name)
-            yield "data: " + json.dumps({"status": "info", "message": "Cleaned up temporary video asset from Gemini storage."}) + "\n\n"
-            
+            try:
+                client.files.delete(name=video_upload.name)
+                yield "data: " + json.dumps({"status": "info", "message": "🧹 Cleaned up video from Gemini storage."}) + "\n\n"
+            except Exception:
+                pass
+
         except Exception as e:
-            yield "data: " + json.dumps({"status": "error", "message": f"Processing exception occurred: {str(e)}"}) + "\n\n"
-            
+            yield "data: " + json.dumps({"status": "error", "message": f"❌ AI Processing error: {str(e)}"}) + "\n\n"
+
+        yield "data: " + json.dumps({"status": "info", "message": "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"}) + "\n\n"
+        yield "data: " + json.dumps({"status": "info", "message": "Pipeline complete. All steps finished."}) + "\n\n"
+
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
