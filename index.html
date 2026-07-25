@@ -2147,17 +2147,23 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
                 const cam = previewViewer.camera;
                 const carto = Cesium.Cartographic.fromCartesian(cam.positionWC);
                 
+                // Force scene render and capture high-quality canvas screenshot
+                previewViewer.scene.render();
+                const canvas = previewViewer.scene.canvas;
+                const screenshot = canvas.toDataURL("image/jpeg", 0.85);
+                
                 const kf = {
                     lat: Cesium.Math.toDegrees(carto.latitude),
                     lon: Cesium.Math.toDegrees(carto.longitude),
                     height: carto.height,
                     heading: Cesium.Math.toDegrees(cam.heading),
                     pitch: Cesium.Math.toDegrees(cam.pitch),
-                    roll: Cesium.Math.toDegrees(cam.roll)
+                    roll: Cesium.Math.toDegrees(cam.roll),
+                    screenshot: screenshot
                 };
 
                 recordedKeyframes.push(kf);
-                console.log("Recorded camera keyframe:", kf);
+                console.log("Recorded camera keyframe with screenshot:", kf);
                 
                 // Trigger visual updates
                 updateRecorderVisuals();
@@ -2322,8 +2328,11 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
                 // Merge direct viewer camera coordinates & orientation values
                 Object.assign(payload, cameraParams);
                 
+                // Store path in localStorage to avoid URL length limits
+                localStorage.setItem('drone_recorded_path', JSON.stringify(finalStagedVertices));
+
                 // Open viewer.html in a new tab with the path payload (simulation)
-                const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(payload.location)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&session_id=${encodeURIComponent(sessionId)}&target_mode=${encodeURIComponent(previewTargetMode)}&path=${encodeURIComponent(JSON.stringify(finalStagedVertices))}`;
+                const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(payload.location)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&session_id=${encodeURIComponent(sessionId)}&target_mode=${encodeURIComponent(previewTargetMode)}&path_source=local`;
                 window.open(pathUrl, '_blank');
             } else if (previewTargetMode === 'record') {
                 payload.path = finalRecordedKeyframes;
@@ -2410,8 +2419,11 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
                     body: JSON.stringify(payload)
                 }).catch(err => console.warn("Record mode webhook dispatch failed:", err));
 
+                // Store path in localStorage to avoid URL length limits
+                localStorage.setItem('drone_recorded_path', JSON.stringify(finalRecordedKeyframes));
+
                 // Immediately open viewer.html and show simulation active overlay
-                const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(payload.location)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&session_id=${encodeURIComponent(sessionId)}&target_mode=${encodeURIComponent(previewTargetMode)}&path=${encodeURIComponent(JSON.stringify(finalRecordedKeyframes))}`;
+                const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(payload.location)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&session_id=${encodeURIComponent(sessionId)}&target_mode=${encodeURIComponent(previewTargetMode)}&path_source=local`;
                 window.open(pathUrl, '_blank');
 
                 showOverlay(`
@@ -2431,9 +2443,16 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
             }
 
             // Clone payload and truncate screenshot data for clean UI layout log display
-            const displayPayload = { ...payload };
+            const displayPayload = JSON.parse(JSON.stringify(payload));
             if (displayPayload.staging_screenshot) {
                 displayPayload.staging_screenshot = displayPayload.staging_screenshot.substring(0, 80) + "... [BASE64 IMAGE TRUNCATED FOR CLEAN LOGS]";
+            }
+            if (displayPayload.path && Array.isArray(displayPayload.path)) {
+                displayPayload.path.forEach(kf => {
+                    if (kf.screenshot) {
+                        kf.screenshot = kf.screenshot.substring(0, 80) + "... [BASE64 IMAGE TRUNCATED FOR CLEAN LOGS]";
+                    }
+                });
             }
 
             // Display loading overlay
@@ -2486,7 +2505,8 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
                         const rangeVal = result.range || parseInt(pRangeSlider.value);
                         const pitchVal = result.pitch || parseInt(pPitchSlider.value);
                         const locName = result.location || addressInput.value.trim() || 'Selected Coordinates';
-                        const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(locName)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&session_id=${encodeURIComponent(sessionId)}&target_mode=${encodeURIComponent(result.mode || previewTargetMode)}&path=${encodeURIComponent(JSON.stringify(result.path))}`;
+                        localStorage.setItem('drone_recorded_path', JSON.stringify(result.path));
+                        const pathUrl = `viewer.html?mode=path&name=${encodeURIComponent(locName)}&token=${encodeURIComponent(defaultIonToken)}&range=${rangeVal}&pitch=${pitchVal}&session_id=${encodeURIComponent(sessionId)}&target_mode=${encodeURIComponent(result.mode || previewTargetMode)}&path_source=local`;
                         window.open(pathUrl, '_blank');
                         
                         showOverlay(`
