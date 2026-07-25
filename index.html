@@ -2090,15 +2090,14 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
             }
 
             // Determine target webhook URL dynamically based on the active mode (or use local backend)
-            // Pin Mode ('single') always queries the n8n AI webhook directly to fetch path coordinates.
+            // Pin Mode ('single') and Area Mode ('area') always query their respective n8n webhooks directly.
             let targetUrl = "/mission";
             if (previewTargetMode === 'single') {
                 targetUrl = N8N_SINGLE_URL;
+            } else if (previewTargetMode === 'area') {
+                targetUrl = N8N_AREA_URL;
             } else if (!USE_LOCAL_BACKEND) {
                 targetUrl = N8N_PATH_URL;
-                if (previewTargetMode === 'area') {
-                    targetUrl = N8N_AREA_URL;
-                }
             }
 
             console.log("Dispatching mission payload:", payload, "to URL:", targetUrl);
@@ -2115,7 +2114,7 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
             // Display loading overlay
             let loadingTitle = "Dispatching Drone";
             let loadingMessage = "Connecting to mission control, mapping area coordinates, and preparing flight plans...";
-            if (previewTargetMode === 'single') {
+            if (previewTargetMode === 'single' || previewTargetMode === 'area') {
                 loadingTitle = "Calculating Flight Path";
                 loadingMessage = "AI is analyzing telemetry and generating the optimal 3D flight path. This typically takes 10-15 seconds...";
             }
@@ -2128,13 +2127,9 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
                 <pre>${JSON.stringify(displayPayload, null, 2)}</pre>
             `);
 
-            // Trigger n8n webhook in background (fire-and-forget) if we are using the local backend (excluding single mode which queries n8n directly)
-            if (USE_LOCAL_BACKEND && previewTargetMode !== 'single') {
+            // Trigger n8n webhook in background (fire-and-forget) if we are using the local backend (excluding single and area modes which query n8n directly)
+            if (USE_LOCAL_BACKEND && previewTargetMode !== 'single' && previewTargetMode !== 'area') {
                 let n8nWebhookUrl = N8N_PATH_URL;
-                if (previewTargetMode === 'area') {
-                    n8nWebhookUrl = N8N_AREA_URL;
-                }
-                
                 console.log("Triggering background n8n webhook (fire-and-forget):", n8nWebhookUrl);
                 fetch(n8nWebhookUrl, {
                     method: 'POST',
@@ -2144,7 +2139,8 @@ Return ONLY the raw JSON object, no markdown, no code blocks, no backticks.`;
             }
 
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 seconds strict timeout
+            const timeoutMs = (previewTargetMode === 'single' || previewTargetMode === 'area') ? 60000 : 20000;
+            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
             try {
                 const response = await fetch(targetUrl, {
