@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Drone Cesium Viewer</title>
+    <!-- Cesium JS and CSS from CDN -->
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Cesium.js"></script>
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <style>
+        html, body, #cesiumContainer {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #000;
+        }
+
+        /* Sleek overlay for HUD */
+        #hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(10, 15, 28, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 20px;
+            color: #fff;
+            z-index: 1000;
+            width: 280px;
+            pointer-events: none;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            transition: all 0.3s ease;
+        }
+
+        h2 {
+            margin: 0 0 15px 0;
+            font-size: 16px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: #4facfe;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .hud-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+
+        .hud-label {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .hud-value {
+            font-weight: bold;
+            color: #fff;
+            font-family: monospace;
+        }
+
+        #loading-indicator {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(10, 15, 28, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 30px;
+            padding: 10px 20px;
+            color: #fff;
+            font-size: 12px;
+            font-weight: bold;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        }
+
+        .spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top: 2px solid #4facfe;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Hide Cesium default credits for clean capture */
+        .cesium-viewer-bottom {
+            display: none !important;
+        }
+
+        /* Sleek Chat Input Overlay at the bottom center */
+        #chat-overlay {
+            position: absolute;
+            bottom: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            background: rgba(10, 15, 28, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 30px;
+            padding: 8px 12px;
+            z-index: 1001;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            width: 90%;
+            max-width: 500px;
+            align-items: center;
+        }
+
+        #chat-input {
+            flex-grow: 1;
+            background: transparent;
+            border: none;
+            color: #fff;
+            padding: 8px 12px;
+            font-size: 14px;
+            outline: none;
+        }
+
+        #chat-input::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        #chat-send-btn {
+            background: #4facfe;
+            color: #0a0f1c;
+            border: none;
+            border-radius: 20px;
+            padding: 8px 20px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        #chat-send-btn:hover {
+            background: #00f2fe;
+            box-shadow: 0 0 10px rgba(0, 242, 254, 0.5);
+        }
+
+        #chat-send-btn:active {
+            transform: scale(0.95);
+        }
+
+        .chat-loading {
+            pointer-events: none;
+            opacity: 0.6;
+        }
+
+        /* Fullscreen Overlay for path regeneration */
+        #simulation-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(6, 9, 19, 0.95);
+            z-index: 2000;
+            display: none; /* Hidden by default */
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        .loader-ring {
+            display: inline-block;
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(79, 172, 254, 0.3);
+            border-radius: 50%;
+            border-top-color: #4facfe;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        #simulation-overlay-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #4facfe;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        #simulation-overlay-message {
+            font-size: 14px;
+            color: #cbd5e1;
+            max-width: 450px;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Fullscreen Simulation Overlay for path regeneration -->
+    <div id="simulation-overlay">
+        <div class="loader-ring"></div>
+        <div id="simulation-overlay-title">Regenerating Flight Path</div>
+        <div id="simulation-overlay-message">AI Director is analyzing your feedback and recalculating the flight coordinates. Please wait up to 60 seconds...</div>
+    </div>
+
+    <div id="hud">
+        <h2>Virtual Drone HUD <div class="spinner" id="hud-spinner" style="display:none;"></div></h2>
+        <div class="hud-row">
+            <span class="hud-label">Target Location:</span>
+            <span class="hud-value" id="hud-loc">-</span>
+        </div>
+        <div class="hud-row">
+            <span class="hud-label">Latitude:</span>
+            <span class="hud-value" id="hud-lat">0.000000</span>
+        </div>
+        <div class="hud-row">
+            <span class="hud-label">Longitude:</span>
+            <span class="hud-value" id="hud-lon">0.000000</span>
+        </div>
+        <div class="hud-row">
+            <span class="hud-label">Altitude (Range):</span>
+            <span class="hud-value" id="hud-alt">0 m</span>
+        </div>
+        <div class="hud-row">
+            <span class="hud-label">Heading:</span>
+            <span class="hud-value" id="hud-heading">0°</span>
+        </div>
+        <div class="hud-row">
+            <span class="hud-label">Pitch:</span>
+            <span class="hud-value" id="hud-pitch">0°</span>
+        </div>
+        <div class="hud-row">
+            <span class="hud-label">Status:</span>
+            <span class="hud-value" id="hud-status" style="color: #ff9f43;">INITIALIZING</span>
+        </div>
+    </div>
+
+    <!-- Beautiful fullscreen loading countdown screen -->
+    <div id="countdown-overlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(6, 9, 19, 0.98); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; font-family: sans-serif;">
+        <div class="loader-ring" style="width: 60px; height: 60px; border: 3px solid rgba(255,255,255,0.05); border-top: 3px solid #00f2fe; border-radius: 50%; animation: spin 1.2s linear infinite; margin-bottom: 20px;"></div>
+        <h2 style="color: #00f2fe; margin-bottom: 10px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase;">Loading 3D Terrain & Map Tiles</h2>
+        <p style="color: #cbd5e1; font-size: 14px; margin-bottom: 10px;">Waiting 20 seconds for high-resolution pixels to fully load...</p>
+        <h1 id="countdown-timer" style="font-size: 64px; font-weight: 900; margin-top: 10px; color: #fff; text-shadow: 0 0 20px rgba(0,242,254,0.3);">20</h1>
+    </div>
+
+    <div id="loading-indicator">
+        <div class="spinner"></div>
+        <span id="loading-text">Loading Tiles...</span>
+    </div>
+
+    <!-- Sleek Chat Input Overlay at the bottom center -->
+    <div id="chat-overlay">
+        <input type="text" id="chat-input" placeholder="Don't like the path? Tell the AI director to adjust it..." />
+        <button id="chat-send-btn">Send</button>
+    </div>
+
+    <div id="cesiumContainer"></div>
+
+    <script>
+        // Global viewer reference
+        let viewer = null;
+        let active3dTileset = null;
+        let terrainProvider = null;
+
+        // Parse query params for initialization settings
+        const urlParams = new URLSearchParams(window.location.search);
+        let sessionId = urlParams.get('session_id') || '';
+        if (!sessionId) {
+            sessionId = 'sess_' + Math.random().toString(36).substring(2, 11) + '_' + Date.now();
+            urlParams.set('session_id', sessionId);
+            window.history.replaceState({}, '', `${window.location.pathname}?${urlParams.toString()}`);
+        }
+        
+        // Default fallbacks if opened directly in browser without URL parameters
+        const defaultIonToken = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI4MDNiNDQ4Yi1hMzg0LTQxYzEtYjMxYy00NGJlMjBiN2I4YzYiLCJpZCI6NDA2NzI3LCJpYXQiOjE3NzQwNTEzMzd9.W410ifK9UItmiq6mZIr0ot8JXGgi4T9mCBc9GIUaykA";
+        const defaultGoogleKey = "";
+
+        const ionToken = urlParams.get('token') || defaultIonToken;
+        const googleKey = urlParams.get('googleKey') || defaultGoogleKey;
+        let defaultLat = parseFloat(urlParams.get('lat'));
+        let defaultLon = parseFloat(urlParams.get('lon'));
+        
+        // If lat/lon are missing, try reading them from the path payload
+        if (isNaN(defaultLat) || isNaN(defaultLon)) {
+            const pathSource = urlParams.get('path_source');
+            let pathStr = urlParams.get('path');
+            if (pathSource === 'local') {
+                pathStr = localStorage.getItem('drone_recorded_path');
+            }
+            if (pathStr) {
+                try {
+                    let pts;
+                    try {
+                        pts = JSON.parse(pathStr);
+                    } catch (pe) {
+                        pts = JSON.parse(decodeURIComponent(pathStr));
+                    }
+                    if (pts && pts.length > 0) {
+                        defaultLat = parseFloat(pts[0].lat);
+                        defaultLon = parseFloat(pts[0].lon);
+                    }
+                } catch (e) {
+                    console.warn("Could not read initial lat/lon from path:", e);
+                }
+            }
+        }
+        
+        // Final fallback
+        if (isNaN(defaultLat)) defaultLat = 37.7749;
+        if (isNaN(defaultLon)) defaultLon = -122.4194;
+
+        const targetName = urlParams.get('name') || "Default Target";
+
+        // Set token
+        if (ionToken) {
+            Cesium.Ion.defaultAccessToken = ionToken;
+        }
+
+        // Update HUD display values
+        function updateHUD(lat, lon, range, heading, pitch, statusText) {
+            document.getElementById('hud-lat').innerText = parseFloat(lat).toFixed(6);
+            document.getElementById('hud-lon').innerText = parseFloat(lon).toFixed(6);
+            document.getElementById('hud-alt').innerText = Math.round(range) + ' m';
+            document.getElementById('hud-heading').innerText = Math.round(heading) + '°';
+            document.getElementById('hud-pitch').innerText = Math.round(pitch) + '°';
+            document.getElementById('hud-loc').innerText = targetName;
+            if (statusText) {
+                document.getElementById('hud-status').innerText = statusText;
+                if (statusText === "READY" || statusText === "CAPTURING") {
+                    document.getElementById('hud-status').style.color = "#1dd1a1";
+                } else if (statusText === "ADJUSTING") {
+                    document.getElementById('hud-status').style.color = "#4facfe";
+                } else {
+                    document.getElementById('hud-status').style.color = "#ff9f43";
+                }
+            }
+        }
+
+        // Initialize Cesium
+        async function init() {
+            try {
+                if (ionToken) {
+                    try {
+                        terrainProvider = await Cesium.createWorldTerrainAsync();
+                    } catch (e) {
+                        console.warn("Failed to load Ion terrain, falling back to flat terrain", e);
+                    }
+                } else {
+                    console.log("No Cesium Ion token provided. Using OpenStreetMap imagery and flat terrain.");
+                }
+
+                // Initialize the viewer with optimized settings for performance and photography
+                viewer = new Cesium.Viewer('cesiumContainer', {
+                    terrainProvider: terrainProvider,
+                    baseLayer: false, // Disable default Bing Maps
+                    animation: false,
+                    baseLayerPicker: false,
+                    fullscreenButton: false,
+                    vrButton: false,
+                    geocoder: false,
+                    homeButton: false,
+                    infoBox: false,
+                    sceneModePicker: false,
+                    selectionIndicator: false,
+                    timeline: false,
+                    navigationHelpButton: false,
+                    navigationInstructionsInitiallyVisible: false,
+                    shadows: true,
+                    contextOptions: {
+                        webgl: {
+                            preserveDrawingBuffer: true
+                        }
+                    }
+                });
+
+                // Add OpenStreetMap base imagery layer
+                const osmProvider = new Cesium.OpenStreetMapImageryProvider({
+                    url: 'https://tile.openstreetmap.org/'
+                });
+                viewer.imageryLayers.addImageryProvider(osmProvider);
+
+                // Configure lighting for photorealistic visuals
+                viewer.scene.globe.enableLighting = true;
+                viewer.scene.highDynamicRange = true;
+
+                // Load 3D Buildings
+                let googleTilesetLoaded = false;
+
+                if (googleKey) {
+                    try {
+                        const googleTileset = await Cesium.createGooglePhotorealistic3DTileset({
+                            key: googleKey
+                        });
+                        active3dTileset = viewer.scene.primitives.add(googleTileset);
+                        viewer.scene.globe.show = false; // Hide standard globe to show Google's photorealistic ground textures
+                        googleTilesetLoaded = true;
+                        console.log("Loaded Google Photorealistic 3D Tiles successfully using Google API Key.");
+                    } catch (e) {
+                        console.warn("Failed to load Google 3D Tiles using Google API Key:", e);
+                    }
+                } else if (ionToken) {
+                    try {
+                        console.log("Attempting to load Google Photorealistic 3D Tiles using Cesium Ion Token...");
+                        const googleTileset = await Cesium.createGooglePhotorealistic3DTileset();
+                        active3dTileset = viewer.scene.primitives.add(googleTileset);
+                        viewer.scene.globe.show = false; // Hide standard globe to show Google's photorealistic ground textures
+                        googleTilesetLoaded = true;
+                        console.log("Loaded Google Photorealistic 3D Tiles successfully using Ion token wrapper.");
+                    } catch (e) {
+                        console.warn("createGooglePhotorealistic3DTileset failed, trying asset ID 2275207...", e);
+                        try {
+                            const googleTileset = await Cesium.Cesium3DTileset.fromIonAssetId(2275207);
+                            active3dTileset = viewer.scene.primitives.add(googleTileset);
+                            viewer.scene.globe.show = false;
+                            googleTilesetLoaded = true;
+                            console.log("Loaded Google Photorealistic 3D Tiles successfully using Asset ID 2275207.");
+                        } catch (assetError) {
+                            console.warn("Failed to load Google 3D Tiles using Ion token, falling back to OSM Buildings:", assetError);
+                        }
+                    }
+                }
+
+                if (!googleTilesetLoaded) {
+                    viewer.scene.globe.show = true; // Ensure standard globe is visible
+                    await loadOsmBuildings();
+                }
+
+                // Initial position Setup
+                updateCamera(defaultLon, defaultLat, 500, 0, -30);
+                updateHUD(defaultLat, defaultLon, 500, 0, -30, "READY");
+
+                // Start checking tile load progress
+                checkTileLoading();
+
+                // Check if path parameter exists to start flight animation
+                const mode = urlParams.get('mode');
+                const pathSource = urlParams.get('path_source');
+                let pathStr = urlParams.get('path');
+                
+                if (pathSource === 'local') {
+                    pathStr = localStorage.getItem('drone_recorded_path');
+                }
+
+                if (mode === 'path' && pathStr) {
+                    setupPathFlight(pathStr);
+                } else {
+                    // Hide countdown overlay immediately if opened directly
+                    const overlay = document.getElementById('countdown-overlay');
+                    if (overlay) overlay.style.display = 'none';
+                }
+
+            } catch (error) {
+                console.error("Error initializing Cesium:", error);
+                document.getElementById('hud-status').innerText = "INIT ERROR";
+                document.getElementById('hud-status').style.color = "#ff6b6b";
+            }
+        }
+
+        async function loadOsmBuildings() {
+            if (!ionToken) {
+                console.log("No Cesium Ion token provided. Skipping OSM Buildings loading.");
+                return;
+            }
+            try {
+                const osmBuildings = await Cesium.Cesium3DTileset.fromIonAssetId(96188);
+                active3dTileset = viewer.scene.primitives.add(osmBuildings);
+                console.log("Loaded Cesium OSM Buildings successfully.");
+            } catch (e) {
+                console.error("Error loading OSM Buildings:", e);
+            }
+        }
+
+        // Estimate building height using address keywords and active Cesium 3D scene depth clamping
+        function estimateBuildingHeight(lat, lon, addressName) {
+            let height = 30; // default height for standard medium buildings
+            const query = (addressName || "").toLowerCase();
+            
+            // Standard heuristics based on address text keywords
+            const tallKeywords = ['tower', 'tour', 'skyscraper', 'needle', 'burj', 'building', 'bridge', 'cathedral', 'church', 'basilica', 'monument', 'statue', 'palace'];
+            const hugeKeywords = ['eiffel', 'burj khalifa', 'shanghai tower', 'empire state', 'one world trade', 'taipei 101', 'willis', 'cn tower', 'space needle'];
+            const smallKeywords = ['house', 'home', 'residence', 'villa', 'shop', 'office', 'store', 'cabin', 'cottage'];
+
+            if (hugeKeywords.some(kw => query.includes(kw))) {
+                height = 320; // Eiffel Tower, CN Tower, Burj Khalifa scale
+            } else if (tallKeywords.some(kw => query.includes(kw))) {
+                height = 120; // Skyscraper, Monument scale
+            } else if (smallKeywords.some(kw => query.includes(kw))) {
+                height = 12;  // Small residential house
+            }
+            
+            // Query actual loaded Cesium 3D Tiles / Google photorealistic 3D Tiles scene height if possible
+            try {
+                if (viewer && viewer.scene) {
+                    const position = Cesium.Cartographic.fromDegrees(lon, lat);
+                    const sampledHeight = viewer.scene.sampleHeight(position);
+                    const terrainHeight = viewer.scene.globe.getHeight(position) || 0;
+                    
+                    if (sampledHeight !== undefined && sampledHeight > terrainHeight) {
+                        const calculatedHeight = sampledHeight - terrainHeight;
+                        if (calculatedHeight > 2) {
+                            height = calculatedHeight;
+                            console.log("Sampled actual building height in viewer: " + height + "m");
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn("Failed to sample height from tileset, using heuristic.", e);
+            }
+            
+            return height;
+        }
+
+        // Global functions for external control (Playwright)
+        
+        // Reposition camera looking at a specific point
+        function updateCamera(lon, lat, range, headingDegrees, pitchDegrees) {
+            if (!viewer) return;
+            
+            const buildingHeight = estimateBuildingHeight(lat, lon, targetName);
+            const targetAltitude = buildingHeight / 2; // Center camera on the middle of the structure
+            const adjustedRange = Math.max(120, Math.max(range, buildingHeight * 2.2)); // Prevent clipping and auto-fit entire building
+            
+            const center = Cesium.Cartesian3.fromDegrees(lon, lat, targetAltitude);
+            const heading = Cesium.Math.toRadians(headingDegrees);
+            const pitch = Cesium.Math.toRadians(pitchDegrees);
+            
+            // Set lookAt transform
+            viewer.camera.lookAt(center, new Cesium.HeadingPitchRange(heading, pitch, adjustedRange));
+            
+            // Unlock camera transform so further movements are relative to world coordinates
+            viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+            
+            updateHUD(lat, lon, adjustedRange, headingDegrees, pitchDegrees, "ADJUSTING");
+        }
+
+        // Check if all tiles are loaded
+        function isLoaded() {
+            if (!viewer) return false;
+            const globeLoaded = viewer.scene.globe.tilesLoaded;
+            const tilesetLoaded = !active3dTileset || active3dTileset.tilesLoaded;
+            return globeLoaded && tilesetLoaded;
+        }
+
+        // Monitor tile loading progress for HUD
+        function checkTileLoading() {
+            setInterval(() => {
+                if (isLoaded()) {
+                    document.getElementById('loading-indicator').style.display = 'none';
+                    document.getElementById('hud-spinner').style.display = 'none';
+                    if (document.getElementById('hud-status').innerText === "ADJUSTING") {
+                        document.getElementById('hud-status').innerText = "READY";
+                        document.getElementById('hud-status').style.color = "#1dd1a1";
+                    }
+                } else {
+                    document.getElementById('loading-indicator').style.display = 'flex';
+                    document.getElementById('hud-spinner').style.display = 'block';
+                }
+            }, 300);
+        }
+
+        // Setup path flight animation: countdown 20 seconds, then play
+        function setupPathFlight(pathStr) {
+            let pathPts = [];
+            try {
+                pathPts = JSON.parse(decodeURIComponent(pathStr));
+            } catch (e) {
+                try {
+                    pathPts = JSON.parse(pathStr);
+                } catch (innerError) {
+                    const overlay = document.getElementById('countdown-overlay');
+                    if (overlay) overlay.style.display = 'none';
+                    return;
+                }
+            }
+            const overlay = document.getElementById('countdown-overlay');
+            if (pathPts.length === 0) {
+                console.warn("Empty path array in query parameters.");
+                if (overlay) overlay.style.display = 'none';
+                return;
+            }
+
+            let secondsRemaining = 20;
+            const timerInterval = setInterval(() => {
+                secondsRemaining--;
+                const timerEl = document.getElementById('countdown-timer');
+                if (timerEl) {
+                    timerEl.innerText = secondsRemaining;
+                }
+                if (secondsRemaining <= 0) {
+                    clearInterval(timerInterval);
+                    if (overlay) {
+                        overlay.style.display = 'none';
+                    }
+                    // Run flight animation
+                    const range = parseFloat(urlParams.get('range')) || 300;
+                    const pitch = parseFloat(urlParams.get('pitch')) || -30;
+                    runPathFlight(pathPts, range, pitch);
+                }
+            }, 1000);
+        }
+
+        // Smooth camera movement along waypoints
+        function headingBetween(lat1, lon1, lat2, lon2) {
+            const dLon = Cesium.Math.toRadians(lon2 - lon1);
+            const lat1Rad = Cesium.Math.toRadians(lat1);
+            const lat2Rad = Cesium.Math.toRadians(lat2);
+            const y = Math.sin(dLon) * Math.cos(lat2Rad);
+            const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLon);
+            return (Cesium.Math.toDegrees(Math.atan2(y, x)) + 360) % 360;
+        }
+
+        function lerpHeading(h1, h2, t) {
+            let diff = h2 - h1;
+            while (diff < -180) diff += 360;
+            while (diff > 180) diff -= 360;
+            return (h1 + diff * t + 360) % 360;
+        }
+
+        function runPathFlight(pathPts, range, pitch) {
+            console.log("Starting Path Flight with waypoints:", pathPts);
+            
+            // Build the full frame list
+            const frames = 180; // total frames for a smooth 7.5-second web animation at 24fps
+            const frameList = [];
+            const nSegs = pathPts.length - 1;
+            const framesPerSeg = Math.max(1, Math.floor(frames / nSegs));
+
+            for (let segIdx = 0; segIdx < nSegs; segIdx++) {
+                const p1 = pathPts[segIdx];
+                const p2 = pathPts[segIdx + 1];
+                
+                // Determine if waypoints have custom orientations (from 3D Recorder)
+                const hasCustomHeights = p1.height !== undefined && p2.height !== undefined;
+                const hasCustomHeadings = p1.heading !== undefined && p2.heading !== undefined;
+                const hasCustomPitches = p1.pitch !== undefined && p2.pitch !== undefined;
+                const hasCustomRolls = p1.roll !== undefined && p2.roll !== undefined;
+
+                // Fallback bearing calculation
+                const bearing = headingBetween(p1.lat, p1.lon, p2.lat, p2.lon);
+                let nextBearing = bearing;
+                if (segIdx + 2 < pathPts.length) {
+                    const p3 = pathPts[segIdx + 2];
+                    nextBearing = headingBetween(p2.lat, p2.lon, p3.lat, p3.lon);
+                }
+
+                for (let f = 0; f < framesPerSeg; f++) {
+                    const t = f / framesPerSeg;
+                    
+                    const interpolatedLat = p1.lat + (p2.lat - p1.lat) * t;
+                    const interpolatedLon = p1.lon + (p2.lon - p1.lon) * t;
+                    const interpolatedHeight = hasCustomHeights ? p1.height + (p2.height - p1.height) * t : null;
+                    const interpolatedHeading = hasCustomHeadings ? lerpHeading(p1.heading, p2.heading, t) : lerpHeading(bearing, nextBearing, t);
+                    const interpolatedPitch = hasCustomPitches ? p1.pitch + (p2.pitch - p1.pitch) * t : pitch;
+                    const interpolatedRoll = hasCustomRolls ? p1.roll + (p2.roll - p1.roll) * t : 0;
+
+                    frameList.push({
+                        lat: interpolatedLat,
+                        lon: interpolatedLon,
+                        height: interpolatedHeight,
+                        range: range,
+                        pitch: interpolatedPitch,
+                        heading: interpolatedHeading,
+                        roll: interpolatedRoll,
+                        is_recorded_flight: hasCustomHeights
+                    });
+                }
+            }
+            
+            // Pad remaining frames
+            while (frameList.length < frames) {
+                frameList.push(frameList[frameList.length - 1]);
+            }
+
+            // Start animation loop
+            let currentFrame = 0;
+            
+            function animate() {
+                if (currentFrame >= frameList.length) {
+                    console.log("Path flight complete!");
+                    updateHUD(0, 0, range, 0, pitch, "MISSION COMPLETE");
+                    return;
+                }
+                
+                const cam = frameList[currentFrame];
+                
+                if (cam.is_recorded_flight) {
+                    // Set camera position and orientation directly for manual keyframe paths
+                    viewer.camera.setView({
+                        destination: Cesium.Cartesian3.fromDegrees(cam.lon, cam.lat, cam.height),
+                        orientation: {
+                            heading: Cesium.Math.toRadians(cam.heading),
+                            pitch: Cesium.Math.toRadians(cam.pitch),
+                            roll: Cesium.Math.toRadians(cam.roll)
+                        }
+                    });
+                    updateHUD(cam.lat, cam.lon, cam.height, cam.heading, cam.pitch, `FLIGHT FRAME ${currentFrame}/${frames}`);
+                } else {
+                    // Move camera to look at the waypoint center (altitude 25m) for standard ground path paths
+                    const center = Cesium.Cartesian3.fromDegrees(cam.lon, cam.lat, 25);
+                    const heading = Cesium.Math.toRadians(cam.heading);
+                    const pitchRad = Cesium.Math.toRadians(cam.pitch);
+                    
+                    viewer.camera.lookAt(center, new Cesium.HeadingPitchRange(heading, pitchRad, cam.range));
+                    viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
+                    updateHUD(cam.lat, cam.lon, cam.range, cam.heading, cam.pitch, `FLIGHT FRAME ${currentFrame}/${frames}`);
+                }
+                
+                currentFrame++;
+                requestAnimationFrame(animate);
+            }
+            
+            animate();
+        }
+
+        // Chat Interaction Setup
+        const chatInput = document.getElementById('chat-input');
+        const chatSendBtn = document.getElementById('chat-send-btn');
+        const chatOverlay = document.getElementById('chat-overlay');
+
+        async function sendChatMessage() {
+            const message = chatInput.value.trim();
+            if (!message) return;
+
+            // Show fullscreen regeneration loading overlay
+            const simOverlay = document.getElementById('simulation-overlay');
+            if (simOverlay) {
+                simOverlay.style.display = 'flex';
+            }
+
+            // Set sending state
+            chatInput.disabled = true;
+            chatSendBtn.disabled = true;
+            chatSendBtn.innerText = "Sending...";
+            chatOverlay.classList.add('chat-loading');
+
+            // Parse URL parameters for context
+            const urlParams = new URLSearchParams(window.location.search);
+            const sessionId = urlParams.get('session_id') || '';
+            const lat = urlParams.get('lat') || '';
+            const lon = urlParams.get('lon') || '';
+            const range = urlParams.get('range') || '';
+            const pitch = urlParams.get('pitch') || '';
+            const heading = urlParams.get('heading') || '';
+            const mode = urlParams.get('mode') || '';
+            const name = urlParams.get('name') || '';
+
+            // Retrieve the path from URL if present
+            let pathData = null;
+            const rawPath = urlParams.get('path');
+            if (rawPath) {
+                try {
+                    pathData = JSON.parse(decodeURIComponent(rawPath));
+                } catch (e) {
+                    console.warn("Could not parse path data context:", e);
+                }
+            }
+
+            const feedbackPayload = {
+                session_id: sessionId,
+                message: message,
+                location: name,
+                mode: mode,
+                lat: lat ? parseFloat(lat) : null,
+                lon: lon ? parseFloat(lon) : null,
+                range: range ? parseFloat(range) : null,
+                pitch: pitch ? parseFloat(pitch) : null,
+                heading: heading ? parseFloat(heading) : null,
+                path: pathData
+            };
+
+            // Dynamically select n8n feedback webhook URL based on the original targeting mode
+            const targetMode = urlParams.get('target_mode') || 'single';
+            let webhookUrl = "https://bjl82de9.rpcl.app/webhook/09998941-d181-4470-9cbb-51fa22e0dfac";
+            if (targetMode === 'area') {
+                webhookUrl = "https://bjl82de9.rpcl.app/webhook/09998941-d181-4470-9cbb-51fa22e0dfac3d";
+            } else if (targetMode === 'record') {
+                webhookUrl = "https://bjl82de9.rpcl.app/webhook/b1f1d194-08b3-4885-b9a4-4c88d56aeb22";
+            }
+
+            // Configure 60-second AbortController timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+            try {
+                console.log("Sending user feedback to AI webhook:", feedbackPayload);
+                const response = await fetch(webhookUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(feedbackPayload),
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+
+                if (response.ok) {
+                    // Try parsing response for path recalculations
+                    const responseData = await response.json();
+                    const result = Array.isArray(responseData) ? responseData[0] : responseData;
+                    
+                    if (result && result.path) {
+                        console.log("Received updated flight path from AI:", result.path);
+                        
+                        // Update current page path data dynamically and reload simulation!
+                        urlParams.set('path', encodeURIComponent(JSON.stringify(result.path)));
+                        if (result.range) urlParams.set('range', result.range);
+                        if (result.pitch) urlParams.set('pitch', result.pitch);
+                        window.location.search = urlParams.toString();
+                        return;
+                    }
+                    
+                    alert("Feedback sent successfully, but no updated flight path was returned by the AI Director.");
+                    if (simOverlay) simOverlay.style.display = 'none';
+                    chatInput.value = "";
+                } else {
+                    alert(`Failed to deliver message. Status: ${response.status}`);
+                    if (simOverlay) simOverlay.style.display = 'none';
+                }
+            } catch (error) {
+                clearTimeout(timeoutId);
+                console.error("Error sending feedback message:", error);
+                if (error.name === 'AbortError') {
+                    alert("Timeout: n8n AI webhook took too long (exceeded 60 seconds). Please check your workflow.");
+                } else {
+                    alert("Connection error: Unable to deliver feedback to the AI webhook.");
+                }
+                if (simOverlay) simOverlay.style.display = 'none';
+            } finally {
+                // Restore state
+                chatInput.disabled = false;
+                chatSendBtn.disabled = false;
+                chatSendBtn.innerText = "Send";
+                chatOverlay.classList.remove('chat-loading');
+            }
+        }
+
+        chatSendBtn.addEventListener('click', sendChatMessage);
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                sendChatMessage();
+            }
+        });
+
+        // Trigger initialization
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
