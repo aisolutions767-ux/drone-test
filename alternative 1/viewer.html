@@ -267,8 +267,7 @@
     <div id="chat-overlay" style="display: flex; align-items: center;">
         <input type="text" id="chat-input" placeholder="Don't like the path? Tell the AI director to adjust it..." style="flex: 1;" />
         <button id="chat-send-btn">Send</button>
-        <button id="record-btn" onclick="toggleCanvasRecording()" style="background: #10b981; color: #ffffff; border: none; padding: 10px 15px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 11px; white-space: nowrap; margin-left: 8px; transition: all 0.2s;">🎥 Record Video</button>
-        <button id="generate-video-btn" style="background: #00f2fe; color: #060913; border: none; padding: 10px 15px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 11px; white-space: nowrap; margin-left: 8px; transition: all 0.2s;">🎬 Generate Video</button>
+        <button id="record-btn" onclick="renderAndDownloadFinalVideo()" style="background: linear-gradient(135deg, #10b981, #059669); color: #ffffff; border: none; padding: 10px 18px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 12px; white-space: nowrap; margin-left: 8px; transition: all 0.2s; box-shadow: 0 4px 12px rgba(16,185,129,0.3);">🎬 Render & Download Final Video</button>
     </div>
 
     <!-- Live Console Output Overlay -->
@@ -658,6 +657,9 @@
         let mediaRecorder = null;
         let recordedChunks = [];
         let isRecording = false;
+        let currentPathPts = null;
+        let currentPathRange = 300;
+        let currentPathPitch = -30;
 
         function startCanvasRecording() {
             if (isRecording) return;
@@ -710,7 +712,7 @@
                 a.style.display = 'none';
                 a.href = url;
                 const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                a.download = `drone_flight_${timestamp}.webm`;
+                a.download = `drone_flight_final_${timestamp}.webm`;
                 document.body.appendChild(a);
                 a.click();
                 
@@ -722,7 +724,7 @@
                 isRecording = false;
                 updateRecordButtonUI(false);
                 const hudStatus = document.getElementById('hud-status');
-                if (hudStatus) hudStatus.innerText = "RECORDING DOWNLOADED";
+                if (hudStatus) hudStatus.innerText = "FINAL VIDEO DOWNLOADED";
             };
 
             mediaRecorder.start(100);
@@ -737,35 +739,41 @@
             }
         }
 
-        function toggleCanvasRecording() {
-            if (isRecording) {
-                stopCanvasRecording();
-            } else {
-                startCanvasRecording();
+        function renderAndDownloadFinalVideo() {
+            if (!currentPathPts || currentPathPts.length === 0) {
+                alert("No active flight path available to record!");
+                return;
             }
+            console.log("User triggered Final Video Render & Download!");
+            runPathFlight(currentPathPts, currentPathRange, currentPathPitch, true);
         }
 
         function updateRecordButtonUI(recording) {
             const btn = document.getElementById('record-btn');
             if (!btn) return;
             if (recording) {
-                btn.innerText = '⏹️ Stop & Download';
+                btn.innerText = '🔴 Recording Final Video...';
                 btn.style.background = '#ef4444';
                 btn.style.color = '#ffffff';
-                btn.style.boxShadow = '0 0 12px rgba(239, 68, 68, 0.6)';
+                btn.style.boxShadow = '0 0 16px rgba(239, 68, 68, 0.8)';
             } else {
-                btn.innerText = '🎥 Record Video';
-                btn.style.background = '#10b981';
+                btn.innerText = '🎬 Render & Download Final Video';
+                btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
                 btn.style.color = '#ffffff';
-                btn.style.boxShadow = 'none';
+                btn.style.boxShadow = '0 4px 12px rgba(16,185,129,0.3)';
             }
         }
 
-        function runPathFlight(pathPts, range, pitch) {
-            console.log("Starting Path Flight with waypoints:", pathPts);
+        function runPathFlight(pathPts, range, pitch, isFinalExport = false) {
+            console.log("Starting Path Flight with waypoints:", pathPts, "isFinalExport:", isFinalExport);
+            currentPathPts = pathPts;
+            currentPathRange = range;
+            currentPathPitch = pitch;
             
-            // Auto-start recording 60fps canvas simulation when flight animation begins
-            startCanvasRecording();
+            // Only record canvas stream when user clicks Final Video Render button
+            if (isFinalExport) {
+                startCanvasRecording();
+            }
             
             // Build the full frame list
             const frames = 180; // total frames for a smooth 7.5-second web animation at 24fps
@@ -826,8 +834,10 @@
                 if (currentFrame >= frameList.length) {
                     console.log("Path flight complete!");
                     updateHUD(0, 0, range, 0, pitch, "MISSION COMPLETE");
-                    // Auto-stop recording & download video file
-                    stopCanvasRecording();
+                    // Stop recording & auto-download video if this was a final export run
+                    if (isFinalExport) {
+                        stopCanvasRecording();
+                    }
                     return;
                 }
                 
