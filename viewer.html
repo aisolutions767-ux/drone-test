@@ -264,9 +264,10 @@
     </div>
 
     <!-- Sleek Chat Input Overlay at the bottom center -->
-    <div id="chat-overlay">
-        <input type="text" id="chat-input" placeholder="Don't like the path? Tell the AI director to adjust it..." />
+    <div id="chat-overlay" style="display: flex; align-items: center;">
+        <input type="text" id="chat-input" placeholder="Don't like the path? Tell the AI director to adjust it..." style="flex: 1;" />
         <button id="chat-send-btn">Send</button>
+        <button id="record-btn" onclick="toggleCanvasRecording()" style="background: #10b981; color: #ffffff; border: none; padding: 10px 15px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 11px; white-space: nowrap; margin-left: 8px; transition: all 0.2s;">🎥 Record Video</button>
     </div>
 
     <div id="cesiumContainer"></div>
@@ -631,8 +632,118 @@
             return (h1 + diff * t + 360) % 360;
         }
 
+        // ── Canvas MediaRecorder (Option 1: Direct In-Browser Recording) ──
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let isRecording = false;
+
+        function startCanvasRecording() {
+            if (isRecording) return;
+            const canvas = viewer ? viewer.canvas : document.querySelector('canvas');
+            if (!canvas) {
+                console.error("Cesium Canvas element not found!");
+                return;
+            }
+
+            recordedChunks = [];
+            const fps = 60;
+            const stream = canvas.captureStream ? canvas.captureStream(fps) : (canvas.mozCaptureStream ? canvas.mozCaptureStream(fps) : null);
+            if (!stream) {
+                alert("Your browser does not support HTML5 Canvas stream recording.");
+                return;
+            }
+
+            let mimeType = 'video/webm;codecs=vp9';
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+                mimeType = 'video/webm;codecs=vp8';
+                if (!MediaRecorder.isTypeSupported(mimeType)) {
+                    mimeType = 'video/webm';
+                }
+            }
+
+            try {
+                mediaRecorder = new MediaRecorder(stream, { mimeType });
+            } catch (e) {
+                console.error("MediaRecorder init error:", e);
+                try {
+                    mediaRecorder = new MediaRecorder(stream);
+                } catch (e2) {
+                    alert("MediaRecorder error: " + e2.message);
+                    return;
+                }
+            }
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data && event.data.size > 0) {
+                    recordedChunks.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = () => {
+                if (recordedChunks.length === 0) return;
+                const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
+                const url = URL.createObjectURL(blob);
+                
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                a.download = `drone_flight_${timestamp}.webm`;
+                document.body.appendChild(a);
+                a.click();
+                
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, 200);
+
+                isRecording = false;
+                updateRecordButtonUI(false);
+                const hudStatus = document.getElementById('hud-status');
+                if (hudStatus) hudStatus.innerText = "RECORDING DOWNLOADED";
+            };
+
+            mediaRecorder.start(100);
+            isRecording = true;
+            updateRecordButtonUI(true);
+            console.log("Started in-browser 60 FPS WebGL canvas recording!");
+        }
+
+        function stopCanvasRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+            }
+        }
+
+        function toggleCanvasRecording() {
+            if (isRecording) {
+                stopCanvasRecording();
+            } else {
+                startCanvasRecording();
+            }
+        }
+
+        function updateRecordButtonUI(recording) {
+            const btn = document.getElementById('record-btn');
+            if (!btn) return;
+            if (recording) {
+                btn.innerText = '⏹️ Stop & Download';
+                btn.style.background = '#ef4444';
+                btn.style.color = '#ffffff';
+                btn.style.boxShadow = '0 0 12px rgba(239, 68, 68, 0.6)';
+            } else {
+                btn.innerText = '🎥 Record Video';
+                btn.style.background = '#10b981';
+                btn.style.color = '#ffffff';
+                btn.style.boxShadow = 'none';
+            }
+        }
+
         function runPathFlight(pathPts, range, pitch) {
             console.log("Starting Path Flight with waypoints:", pathPts);
+            
+            // Auto-start recording 60fps canvas simulation when flight animation begins
+            startCanvasRecording();
             
             // Build the full frame list
             const frames = 180; // total frames for a smooth 7.5-second web animation at 24fps
@@ -693,6 +804,8 @@
                 if (currentFrame >= frameList.length) {
                     console.log("Path flight complete!");
                     updateHUD(0, 0, range, 0, pitch, "MISSION COMPLETE");
+                    // Auto-stop recording & download video file
+                    stopCanvasRecording();
                     return;
                 }
                 
