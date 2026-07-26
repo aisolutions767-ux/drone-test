@@ -388,232 +388,174 @@ from fastapi.responses import StreamingResponse
 def generate_video_ai(payload: dict):
     def event_stream():
         yield "data: " + json.dumps({"status": "info", "message": "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"}) + "\n\n"
-        yield "data: " + json.dumps({"status": "info", "message": "🎬 [ALTERNATIVE 1] Full Video AI Pipeline"}) + "\n\n"
+        yield "data: " + json.dumps({"status": "info", "message": "🎬 [ALT 1] Playwright Screen Recording Pipeline"}) + "\n\n"
         yield "data: " + json.dumps({"status": "info", "message": "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"}) + "\n\n"
         time.sleep(0.3)
 
-        # ── STEP 1: Extract flight parameters from payload ──────────────
-        yield "data: " + json.dumps({"status": "info", "message": "📋 STEP 1/5 — Extracting flight parameters..."}) + "\n\n"
+        # ── STEP 1: Build viewer URL with flight parameters ─────────────
+        yield "data: " + json.dumps({"status": "info", "message": "📋 STEP 1/4 — Building viewer URL with flight data..."}) + "\n\n"
 
         path_data = payload.get("path", [])
         location = payload.get("location", "Unknown Location")
         lat = payload.get("lat", 41.0)
         lon = payload.get("lon", 29.0)
         cam_range = payload.get("range", 350)
-        pitch = payload.get("pitch", -25)
+        pitch = payload.get("pitch", -30)
         heading = payload.get("heading", 45)
         mode = payload.get("mode", "single")
 
-        # Determine render mode from path data
-        if path_data and isinstance(path_data, list) and len(path_data) > 1:
-            render_mode = "path"
-            num_frames = max(36, len(path_data) * 12)  # 12 frames per waypoint for smooth motion
-            yield "data: " + json.dumps({"status": "info", "message": f"   Mode: PATH fly-through ({len(path_data)} waypoints)"}) + "\n\n"
-            yield "data: " + json.dumps({"status": "info", "message": f"   Location: {location}"}) + "\n\n"
-            yield "data: " + json.dumps({"status": "info", "message": f"   Frames to render: {num_frames}"}) + "\n\n"
-            # Use first waypoint as start position
-            if "lat" in path_data[0]:
-                lat = path_data[0]["lat"]
-                lon = path_data[0]["lon"]
+        # Get the server port
+        server_port = os.getenv("PORT", "8765")
+
+        import urllib.parse
+
+        url_params = {
+            "lat": str(lat),
+            "lon": str(lon),
+            "name": location,
+            "range": str(int(cam_range)),
+            "pitch": str(int(pitch)),
+            "heading": str(int(heading)),
+            "token": os.getenv("CESIUM_ION_TOKEN", ""),
+        }
+
+        # Add path data for flight animation
+        if path_data and isinstance(path_data, list) and len(path_data) > 0:
+            url_params["mode"] = "path"
+            url_params["path"] = json.dumps(path_data)
+            yield "data: " + json.dumps({"status": "info", "message": f"   Flight mode: PATH ({len(path_data)} waypoints)"}) + "\n\n"
         else:
-            render_mode = "single"
-            num_frames = 72  # Full 360° orbit
-            yield "data: " + json.dumps({"status": "info", "message": f"   Mode: SINGLE orbit (360° sweep)"}) + "\n\n"
-            yield "data: " + json.dumps({"status": "info", "message": f"   Location: {location} ({lat}, {lon})"}) + "\n\n"
-            yield "data: " + json.dumps({"status": "info", "message": f"   Frames to render: {num_frames}"}) + "\n\n"
+            yield "data: " + json.dumps({"status": "info", "message": f"   Flight mode: SINGLE orbit"}) + "\n\n"
 
-        yield "data: " + json.dumps({"status": "info", "message": f"   Camera: range={cam_range}m, pitch={pitch}°, heading={heading}°"}) + "\n\n"
+        viewer_url = f"http://localhost:{server_port}/viewer.html?{urllib.parse.urlencode(url_params)}"
+        yield "data: " + json.dumps({"status": "info", "message": f"   Location: {location} ({lat}, {lon})"}) + "\n\n"
+        yield "data: " + json.dumps({"status": "info", "message": f"   Camera: range={cam_range}m pitch={pitch}° heading={heading}°"}) + "\n\n"
         time.sleep(0.3)
 
-        # ── STEP 2: Render full video via Playwright + OpenCV ───────────
-        yield "data: " + json.dumps({"status": "info", "message": "🎥 STEP 2/5 — Rendering drone flight video via Playwright..."}) + "\n\n"
-        yield "data: " + json.dumps({"status": "info", "message": "   Launching headless Chromium browser..."}) + "\n\n"
-        yield "data: " + json.dumps({"status": "info", "message": "   Loading Cesium 3D globe + Google Photorealistic tiles..."}) + "\n\n"
+        # ── STEP 2: Launch Playwright with screen recording ─────────────
+        yield "data: " + json.dumps({"status": "info", "message": "🎥 STEP 2/4 — Launching Playwright with video recording..."}) + "\n\n"
+        yield "data: " + json.dumps({"status": "info", "message": "   Starting headless Chromium browser..."}) + "\n\n"
 
-        render_script = DRONE_DIR / "drone_render_video.py"
-        if not render_script.exists():
-            render_script = DRONE_DIR.parent / "drone_render_video.py"
-
-        if not render_script.exists():
-            yield "data: " + json.dumps({"status": "error", "message": "❌ Error: drone_render_video.py not found!"}) + "\n\n"
-            return
-
-        # Build render command
-        cmd = [
-            sys.executable, str(render_script),
-            "--location", str(location),
-            "--mode", render_mode,
-            "--lat", str(lat), "--lon", str(lon),
-            "--range", str(int(cam_range)),
-            "--pitch", str(int(pitch)),
-            "--heading", str(int(heading)),
-            "--frames", str(num_frames),
-            "--fps", "24"
-        ]
-
-        if render_mode == "path" and path_data:
-            # Clean path data — only keep lat/lon for the render script
-            clean_path = []
-            for pt in path_data:
-                if isinstance(pt, dict) and "lat" in pt and "lon" in pt:
-                    clean_path.append({"lat": pt["lat"], "lon": pt["lon"]})
-            if clean_path:
-                cmd.extend(["--path", json.dumps(clean_path)])
-
-        yield "data: " + json.dumps({"status": "info", "message": f"   Command: drone_render_video.py --mode {render_mode} --frames {num_frames}"}) + "\n\n"
-        yield "data: " + json.dumps({"status": "info", "message": "   ⏳ Rendering frames... (this may take 30-120 seconds)"}) + "\n\n"
+        # Create output directory
+        videos_dir = DRONE_DIR / "videos"
+        videos_dir.mkdir(exist_ok=True)
 
         try:
-            # Run render with real-time output streaming
-            render_proc = subprocess.Popen(
-                cmd, cwd=str(DRONE_DIR),
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, bufsize=1
-            )
+            from playwright.sync_api import sync_playwright
 
-            output_lines = []
-            for line in iter(render_proc.stdout.readline, ""):
-                line = line.strip()
-                if line:
-                    output_lines.append(line)
-                    # Stream key progress lines to the frontend
-                    if any(kw in line.lower() for kw in ["rendered", "frame", "compiling", "video ready", "error", "warning", "loaded", "mode"]):
-                        yield "data: " + json.dumps({"status": "info", "message": f"   📸 {line}"}) + "\n\n"
+            with sync_playwright() as p:
+                browser_args = []
+                if sys.platform == "win32":
+                    browser_args = ["--disable-gpu", "--no-sandbox"]
+                else:
+                    browser_args = ["--use-gl=angle", "--use-angle=swiftshader", "--ignore-gpu-blocklist"]
 
-            render_proc.wait(timeout=300)
+                browser = p.chromium.launch(
+                    headless=True,
+                    args=browser_args
+                )
 
-            if render_proc.returncode != 0:
-                error_output = "\n".join(output_lines[-10:])
-                yield "data: " + json.dumps({"status": "error", "message": f"❌ Render failed (exit code {render_proc.returncode})"}) + "\n\n"
-                yield "data: " + json.dumps({"status": "error", "message": f"   Last output: {error_output[-500:]}"}) + "\n\n"
-                return
+                # Create context WITH video recording enabled
+                context = browser.new_context(
+                    viewport={"width": 1280, "height": 720},
+                    record_video_dir=str(videos_dir),
+                    record_video_size={"width": 1280, "height": 720}
+                )
 
-        except subprocess.TimeoutExpired:
-            render_proc.kill()
-            yield "data: " + json.dumps({"status": "error", "message": "❌ Render timed out after 300 seconds."}) + "\n\n"
-            return
-        except Exception as render_err:
-            yield "data: " + json.dumps({"status": "error", "message": f"❌ Render exception: {str(render_err)}"}) + "\n\n"
-            return
+                page = context.new_page()
+                yield "data: " + json.dumps({"status": "info", "message": "   ✅ Browser launched with video recording enabled"}) + "\n\n"
+                yield "data: " + json.dumps({"status": "info", "message": f"   Recording to: {videos_dir}/"}) + "\n\n"
 
-        # ── STEP 3: Locate rendered video ───────────────────────────────
-        yield "data: " + json.dumps({"status": "info", "message": "📂 STEP 3/5 — Locating rendered video file..."}) + "\n\n"
+                # Navigate to viewer
+                yield "data: " + json.dumps({"status": "info", "message": "   Loading viewer.html with Cesium 3D globe..."}) + "\n\n"
+                page.goto(viewer_url, wait_until="commit", timeout=60000)
 
-        # Check multiple locations for the output video
-        target_video = None
-        search_paths = [
-            DRONE_DIR / "drone_video.mp4",
-            DRONE_DIR.parent / "drone_video.mp4",
-            Path("drone_video.mp4"),
-        ]
-        # Also check videos/ subdirectories
-        for vdir in [DRONE_DIR / "videos", DRONE_DIR.parent / "videos"]:
-            if vdir.exists():
-                mp4s = sorted(vdir.glob("*.mp4"), key=os.path.getmtime)
-                if mp4s:
-                    search_paths.insert(0, mp4s[-1])
+                # ── STEP 3: Wait for Cesium load + countdown + animation ────
+                yield "data: " + json.dumps({"status": "info", "message": "🌍 STEP 3/4 — Waiting for simulation playback..."}) + "\n\n"
 
-        for vp in search_paths:
-            if vp.exists():
-                target_video = vp
-                break
+                # Wait for Cesium to be fully loaded (isLoaded function)
+                yield "data: " + json.dumps({"status": "info", "message": "   ⏳ Waiting for Cesium 3D tiles to load..."}) + "\n\n"
+                cesium_loaded = False
+                start_wait = time.time()
+                while time.time() - start_wait < 30:
+                    try:
+                        loaded = page.evaluate("typeof isLoaded === 'function' ? isLoaded() : false")
+                        if loaded:
+                            cesium_loaded = True
+                            break
+                    except Exception:
+                        pass
+                    time.sleep(0.5)
 
-        if not target_video:
-            yield "data: " + json.dumps({"status": "error", "message": "❌ Error: Video render completed but output .mp4 not found!"}) + "\n\n"
-            return
+                if cesium_loaded:
+                    elapsed = int(time.time() - start_wait)
+                    yield "data: " + json.dumps({"status": "info", "message": f"   ✅ Cesium loaded in {elapsed}s"}) + "\n\n"
+                else:
+                    yield "data: " + json.dumps({"status": "info", "message": "   ⚠️ Cesium load timeout — proceeding anyway..."}) + "\n\n"
 
-        size_mb = target_video.stat().st_size / (1024 * 1024)
-        yield "data: " + json.dumps({"status": "info", "message": f"   ✅ Found: {target_video.name} ({size_mb:.1f} MB)"}) + "\n\n"
-        time.sleep(0.3)
+                # Now wait through the 20-second countdown
+                yield "data: " + json.dumps({"status": "info", "message": "   ⏳ 20-second countdown running (tiles loading)..."}) + "\n\n"
+                
+                # Stream countdown progress
+                for sec in range(20, 0, -5):
+                    time.sleep(5)
+                    yield "data: " + json.dumps({"status": "info", "message": f"   ⏱️ Countdown: {sec - 5}s remaining..."}) + "\n\n"
 
-        # ── STEP 4: Upload to Gemini & Get AI Analysis ──────────────────
-        yield "data: " + json.dumps({"status": "info", "message": "🤖 STEP 4/5 — Uploading video to Google Gemini AI..."}) + "\n\n"
+                # Wait for flight animation to complete (~8 seconds for 180 frames)
+                yield "data: " + json.dumps({"status": "info", "message": "   🚁 Flight animation playing... recording screen..."}) + "\n\n"
+                time.sleep(10)  # 8s flight + 2s buffer
 
-        gemini_key = os.getenv("GEMINI_API_KEY")
-        if not gemini_key:
-            yield "data: " + json.dumps({"status": "error", "message": "❌ Error: GEMINI_API_KEY not set in .env or environment."}) + "\n\n"
-            return
+                yield "data: " + json.dumps({"status": "info", "message": "   ✅ Flight simulation complete!"}) + "\n\n"
 
-        try:
-            from google import genai
-            from google.genai import types
+                # Close context to finalize video file
+                page.close()
+                context.close()
+                browser.close()
 
-            client = genai.Client(api_key=gemini_key)
-            yield "data: " + json.dumps({"status": "info", "message": "   Connected to Gemini API."}) + "\n\n"
+            yield "data: " + json.dumps({"status": "info", "message": "   Browser closed. Finalizing video file..."}) + "\n\n"
+            time.sleep(1)
 
-            yield "data: " + json.dumps({"status": "info", "message": f"   Uploading {size_mb:.1f} MB video to Gemini cloud storage..."}) + "\n\n"
-            video_upload = client.files.upload(file=str(target_video))
-            yield "data: " + json.dumps({"status": "info", "message": f"   Upload complete. File ref: {video_upload.name}"}) + "\n\n"
+            # ── STEP 4: Find and rename the output video ────────────────
+            yield "data: " + json.dumps({"status": "info", "message": "📂 STEP 4/4 — Locating recorded video..."}) + "\n\n"
 
-            # Wait for Gemini to index the video
-            start_proc = time.time()
-            processing_timeout = 120
-            while video_upload.state.name == "PROCESSING":
-                elapsed = int(time.time() - start_proc)
-                if elapsed > processing_timeout:
-                    yield "data: " + json.dumps({"status": "error", "message": "❌ Video processing timed out on Gemini server."}) + "\n\n"
-                    break
-                yield "data: " + json.dumps({"status": "info", "message": f"   ⏳ Gemini indexing video... ({elapsed}s elapsed)"}) + "\n\n"
-                time.sleep(3)
-                video_upload = client.files.get(name=video_upload.name)
+            # Playwright saves as a random .webm file — find the newest one
+            webm_files = sorted(videos_dir.glob("*.webm"), key=os.path.getmtime, reverse=True)
+            mp4_files = sorted(videos_dir.glob("*.mp4"), key=os.path.getmtime, reverse=True)
 
-            if video_upload.state.name != "ACTIVE":
-                yield "data: " + json.dumps({"status": "error", "message": f"❌ Video state invalid: {video_upload.state.name}"}) + "\n\n"
-                return
+            target_video = None
+            if webm_files:
+                target_video = webm_files[0]
+                # Rename to a clean filename
+                final_name = videos_dir / f"drone_flight_{int(time.time())}.webm"
+                target_video.rename(final_name)
+                target_video = final_name
+            elif mp4_files:
+                target_video = mp4_files[0]
 
-            yield "data: " + json.dumps({"status": "info", "message": "   ✅ Video indexed and ready for analysis."}) + "\n\n"
-            time.sleep(0.3)
-
-            # ── STEP 5: AI Cinematic Analysis & Enhancement ─────────────
-            yield "data: " + json.dumps({"status": "info", "message": "🎬 STEP 5/5 — Generating AI cinematic analysis..."}) + "\n\n"
-            yield "data: " + json.dumps({"status": "info", "message": "   Sending to Gemini 2.0 Flash for deep video analysis..."}) + "\n\n"
-
-            prompt = (
-                "You are a world-class cinematic drone videographer and post-production director. "
-                "Watch this drone flight video carefully.\n\n"
-                "Provide a comprehensive analysis with these sections:\n\n"
-                "## 🎥 Flight Quality Assessment\n"
-                "Rate the overall smoothness, camera motion, and composition (1-10 score).\n\n"
-                "## 🔧 Specific Issues Found\n"
-                "List any jerky movements, poor framing, bad angles, or visual artifacts.\n\n"
-                "## ✨ Enhancement Recommendations\n"
-                "Provide 5 specific, actionable improvements:\n"
-                "1. Camera angle & movement improvements\n"
-                "2. Speed/pacing adjustments\n"
-                "3. Composition & framing fixes\n"
-                "4. Suggested color grading & post-production effects\n"
-                "5. Cinematic techniques to apply (dolly zoom, reveal shots, etc.)\n\n"
-                "## 🎬 AI Video Enhancement Prompt\n"
-                "Write a detailed prompt that could be fed to an AI video enhancer (like Runway, Sora, or Kling) "
-                "to transform this raw 3D simulation into a photorealistic cinematic drone shot. "
-                "Include descriptions of realistic lighting, shadows, textures, weather, "
-                "atmospheric haze, and motion blur that should be added.\n\n"
-                "Be specific, professional, and constructive."
-            )
-
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=[video_upload, prompt]
-            )
-
-            yield "data: " + json.dumps({
-                "status": "success",
-                "message": "✅ AI Cinematic Analysis Complete!",
-                "result": response.text.strip()
-            }) + "\n\n"
-
-            # Cleanup
-            try:
-                client.files.delete(name=video_upload.name)
-                yield "data: " + json.dumps({"status": "info", "message": "🧹 Cleaned up video from Gemini storage."}) + "\n\n"
-            except Exception:
-                pass
+            if target_video and target_video.exists():
+                size_mb = target_video.stat().st_size / (1024 * 1024)
+                yield "data: " + json.dumps({
+                    "status": "success",
+                    "message": f"✅ Video recorded successfully!",
+                    "result": f"**Drone Flight Video Captured!**\n\n"
+                             f"- **File**: `{target_video.name}`\n"
+                             f"- **Size**: {size_mb:.1f} MB\n"
+                             f"- **Resolution**: 1280×720\n"
+                             f"- **Location**: `{videos_dir}/`\n\n"
+                             f"The full Cesium 3D simulation has been screen-recorded.\n"
+                             f"This video includes the 20-second loading phase and the complete flight animation.\n\n"
+                             f"Ready for AI enhancement in the next step."
+                }) + "\n\n"
+            else:
+                yield "data: " + json.dumps({"status": "error", "message": "❌ Error: No video file found after recording."}) + "\n\n"
 
         except Exception as e:
-            yield "data: " + json.dumps({"status": "error", "message": f"❌ AI Processing error: {str(e)}"}) + "\n\n"
+            import traceback
+            yield "data: " + json.dumps({"status": "error", "message": f"❌ Playwright error: {str(e)}"}) + "\n\n"
+            yield "data: " + json.dumps({"status": "error", "message": f"   {traceback.format_exc()[-500:]}"}) + "\n\n"
 
         yield "data: " + json.dumps({"status": "info", "message": "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"}) + "\n\n"
-        yield "data: " + json.dumps({"status": "info", "message": "Pipeline complete. All steps finished."}) + "\n\n"
+        yield "data: " + json.dumps({"status": "info", "message": "Pipeline complete."}) + "\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
